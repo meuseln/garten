@@ -2,18 +2,23 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  Bird,
   Check,
   CloudSun,
   Eye,
   EyeOff,
+  Hammer,
   Plus,
   SlidersHorizontal,
   Sparkles,
+  Sprout,
+  Warehouse,
 } from 'lucide-react';
 import { DEFAULT_DASHBOARD_LAYOUT, useHomestead } from '../context/HomesteadContext';
 import { describeWeatherCode } from '../lib/weather';
-import { PHENOLOGICAL_PHASES } from '../data/botanicalCatalog';
+import { MONTHLY_GARDEN_CALENDAR, PHENOLOGICAL_PHASES } from '../data/botanicalCatalog';
 import { Modal, ModuleHeader, SegmentedTabs } from '../components/ui/SharedUI';
+import { HomesteadAssistantPanel } from '../components/assistant/HomesteadAssistantPanel';
 import type { DashboardCardConfig } from '../types/homestead';
 
 export const DashboardView: React.FC = () => {
@@ -44,14 +49,16 @@ export const DashboardView: React.FC = () => {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [notesDraft, setNotesDraft] = useState(userProfile?.personalNotes ?? '');
   const [seeding, setSeeding] = useState(false);
-  const [mobilePage, setMobilePage] = useState<'tasks' | 'weather' | 'farm' | 'pantry' | 'notes'>('tasks');
+  const [mobilePage, setMobilePage] = useState<'tasks' | 'assistant' | 'weather' | 'farm' | 'pantry' | 'notes'>('tasks');
 
   const layout: DashboardCardConfig[] = useMemo(() => {
-    const base =
+    const saved =
       userProfile?.dashboardLayout && userProfile.dashboardLayout.length > 0
         ? userProfile.dashboardLayout
         : DEFAULT_DASHBOARD_LAYOUT;
-    return [...base].sort((a, b) => a.priority - b.priority);
+    const savedIds = new Set(saved.map((c) => c.id));
+    const missing = DEFAULT_DASHBOARD_LAYOUT.filter((d) => !savedIds.has(d.id));
+    return [...saved, ...missing].sort((a, b) => a.priority - b.priority);
   }, [userProfile?.dashboardLayout]);
 
   const activeAreas = areas.filter((a) => !a.archived);
@@ -90,6 +97,7 @@ export const DashboardView: React.FC = () => {
   const currentMonthIdx = new Date().getMonth();
   const phenoIdx = Math.min(PHENOLOGICAL_PHASES.length - 1, Math.floor((currentMonthIdx / 12) * PHENOLOGICAL_PHASES.length));
   const currentPheno = PHENOLOGICAL_PHASES[phenoIdx];
+  const currentMonthGuide = MONTHLY_GARDEN_CALENDAR[currentMonthIdx];
 
   const toggleTaskDone = async (ev: (typeof activeEvents)[number]) => {
     await updateRecord(
@@ -179,6 +187,7 @@ export const DashboardView: React.FC = () => {
         <SegmentedTabs
           tabs={[
             { id: 'tasks', label: `Aufgaben (${tasks.length})` },
+            { id: 'assistant', label: 'Assistent' },
             { id: 'weather', label: weather ? `${Math.round(weather.current.temp)}° Wetter` : 'Wetter' },
             { id: 'farm', label: 'Garten & Tiere' },
             { id: 'pantry', label: 'Vorräte & Bau' },
@@ -196,19 +205,50 @@ export const DashboardView: React.FC = () => {
           .map((card) => {
             const mobileVisible =
               (mobilePage === 'weather' && card.id === 'weather') ||
+              (mobilePage === 'assistant' && card.id === 'assistant') ||
               (mobilePage === 'tasks' && card.id === 'tasks') ||
               (mobilePage === 'farm' && (card.id === 'garden' || card.id === 'animals')) ||
               (mobilePage === 'pantry' && (card.id === 'pantry' || card.id === 'projects')) ||
               (mobilePage === 'notes' && card.id === 'notes');
             const mobileHideClass = mobileVisible ? '' : 'hidden lg:block';
 
+            if (card.id === 'assistant') {
+              return (
+                <section
+                  key="assistant"
+                  className={`${mobileHideClass} lg:col-span-5 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
+                >
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#3B6912] via-[#BBE774] to-[#597CD4]" />
+                  <div className="p-5 space-y-3 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-[#3B6912] dark:text-[#BBE774]" />
+                          Hof-Assistent
+                        </h2>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                          Tipps für Garten, Beete, Rezepte & Wetter — direkt gefragt
+                        </p>
+                      </div>
+                    </div>
+                    <HomesteadAssistantPanel
+                      compact
+                      onOpenFull={() => setActiveModule('knowledge')}
+                    />
+                  </div>
+                </section>
+              );
+            }
+
             if (card.id === 'weather') {
               const cond = weather ? describeWeatherCode(weather.current.weatherCode) : null;
               return (
                 <section
                   key="weather"
-                  className={`${mobileHideClass} lg:col-span-7 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4`}
+                  className={`${mobileHideClass} lg:col-span-7 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden space-y-4`}
                 >
+                  <div className="h-1.5 w-full bg-gradient-to-r from-[#597CD4] to-[#38BDF8]" />
+                  <div className="px-5 pb-5 space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="font-display text-lg font-semibold flex items-center gap-2">
@@ -307,8 +347,9 @@ export const DashboardView: React.FC = () => {
                       </div>
                     </>
                   ) : (
-                    <div className="text-sm text-neutral-500 py-4">Wetterdaten werden geladen…</div>
+                  <div className="text-sm text-neutral-500 py-4">Wetterdaten werden geladen…</div>
                   )}
+                  </div>
                 </section>
               );
             }
@@ -317,7 +358,7 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="tasks"
-                  className={`${mobileHideClass} lg:col-span-5 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4`}
                 >
                   <div className="flex items-center justify-between">
                     <h2 className="font-display text-lg font-semibold">Aufgaben & Termine</h2>
@@ -406,37 +447,45 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="garden"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold">Garten & Anbau</h2>
-                    <button
-                      type="button"
-                      onClick={() => setActiveModule('cultivation')}
-                      className="text-xs font-semibold text-[#3B6912] dark:text-[#BBE774] hover:underline"
-                    >
-                      Anbau →
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{gardenBeds.length}</div>
-                      <div className="text-[11px] text-neutral-500">Beete/Flächen</div>
+                  <div className="h-1.5 w-full bg-[#3B6912]" />
+                  <div className="p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                        <Sprout className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+                        Garten & Anbau
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setActiveModule('cultivation')}
+                        className="text-xs font-semibold text-[#3B6912] dark:text-[#BBE774] hover:underline"
+                      >
+                        Anbau →
+                      </button>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{activePlants.length}</div>
-                      <div className="text-[11px] text-neutral-500">Sorten</div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2.5 rounded-xl bg-[#BBE774]/20">
+                        <div className="text-lg font-bold font-mono-num">{gardenBeds.length}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Beete/Flächen</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#65A30D]/15">
+                        <div className="text-lg font-bold font-mono-num">{activePlants.length}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Sorten</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#0D9488]/15">
+                        <div className="text-lg font-bold font-mono-num">{activePlantings.length}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Auf Beeten</div>
+                      </div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{activePlantings.length}</div>
-                      <div className="text-[11px] text-neutral-500">Pflanzungen</div>
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
+                      <div className="font-semibold text-neutral-900 dark:text-neutral-200">
+                        Im {currentMonthGuide.monthName} machbar:
+                      </div>
+                      <p>
+                        Anbau: {currentMonthGuide.sowingAndPlanting.slice(0, 2).join(', ')} · Ernte: {currentMonthGuide.harvest.slice(0, 2).join(', ')}
+                      </p>
                     </div>
-                  </div>
-                  <div className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1.5">
-                    <div className="font-semibold text-neutral-900 dark:text-neutral-200">
-                      Saison-Hinweis ({currentPheno.phase}):
-                    </div>
-                    <p>{currentPheno.gardenTasks[0]}</p>
                   </div>
                 </section>
               );
@@ -446,38 +495,44 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="animals"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold">Tiere & Futter</h2>
-                    <button
-                      type="button"
-                      onClick={() => setActiveModule('animals')}
-                      className="text-xs font-semibold text-[#63390C] dark:text-[#FFC814] hover:underline"
-                    >
-                      Tierbereich →
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{totalAnimalsCount}</div>
-                      <div className="text-[11px] text-neutral-500">Tiere gesamt</div>
+                  <div className="h-1.5 w-full bg-[#D97706]" />
+                  <div className="p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                        <Bird className="w-4 h-4 text-[#D97706]" />
+                        Tiere & Futter
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setActiveModule('animals')}
+                        className="text-xs font-semibold text-[#D97706] hover:underline"
+                      >
+                        Tierbereich →
+                      </button>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{recentEggs}</div>
-                      <div className="text-[11px] text-neutral-500">Eier (7 Tage)</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className={`text-lg font-bold font-mono-num ${lowFeed.length > 0 ? 'text-[#CF6432]' : ''}`}>
-                        {lowFeed.length}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2.5 rounded-xl bg-[#FFC814]/20">
+                        <div className="text-lg font-bold font-mono-num">{totalAnimalsCount}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Tiere gesamt</div>
                       </div>
-                      <div className="text-[11px] text-neutral-500">Futter knapp</div>
+                      <div className="p-2.5 rounded-xl bg-[#D97706]/15">
+                        <div className="text-lg font-bold font-mono-num">{recentEggs}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Eier (7 Tage)</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#CF6432]/15">
+                        <div className={`text-lg font-bold font-mono-num ${lowFeed.length > 0 ? 'text-[#CF6432]' : ''}`}>
+                          {lowFeed.length}
+                        </div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Futter knapp</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-xs text-neutral-600 dark:text-neutral-400">
-                    {activeAnimals.length === 0
-                      ? 'Noch keine Tiergruppen angelegt.'
-                      : activeAnimals.map((g) => `${g.title} (${g.payload.count})`).join(' · ')}
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                      {activeAnimals.length === 0
+                        ? 'Noch keine Tiergruppen angelegt.'
+                        : activeAnimals.map((g) => `${g.title} (${g.payload.count})`).join(' · ')}
+                    </div>
                   </div>
                 </section>
               );
@@ -487,38 +542,44 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="pantry"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold">Vorräte & Ernten</h2>
-                    <button
-                      type="button"
-                      onClick={() => setActiveModule('pantry')}
-                      className="text-xs font-semibold text-[#CF6432] hover:underline"
-                    >
-                      Vorräte →
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{activeInventory.length}</div>
-                      <div className="text-[11px] text-neutral-500">Vorratsartikel</div>
+                  <div className="h-1.5 w-full bg-[#EA580C]" />
+                  <div className="p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                        <Warehouse className="w-4 h-4 text-[#EA580C]" />
+                        Vorräte & Ernten
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setActiveModule('pantry')}
+                        className="text-xs font-semibold text-[#CF6432] hover:underline"
+                      >
+                        Vorräte →
+                      </button>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{activeBatches.length}</div>
-                      <div className="text-[11px] text-neutral-500">Chargen</div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2.5 rounded-xl bg-[#EA580C]/12">
+                        <div className="text-lg font-bold font-mono-num">{activeInventory.length}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Vorräte</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#F28090]/20">
+                        <div className="text-lg font-bold font-mono-num">{activeBatches.length}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Chargen</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#BBE774]/25">
+                        <div className="text-lg font-bold font-mono-num">{activeHarvests.length}</div>
+                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Ernten</div>
+                      </div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{activeHarvests.length}</div>
-                      <div className="text-[11px] text-neutral-500">Ernten</div>
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                      {lowInventory.length > 0
+                        ? `Niedrige Bestände: ${lowInventory.map((i) => i.title).slice(0, 3).join(', ')}`
+                        : activeBatches[0]
+                        ? `Letzte Charge: ${activeBatches[0].payload.batchNumber} (${activeBatches[0].title})`
+                        : 'Noch keine Vorräte oder Ernten eingetragen.'}
                     </div>
-                  </div>
-                  <div className="text-xs text-neutral-600 dark:text-neutral-400">
-                    {lowInventory.length > 0
-                      ? `Niedrige Bestände: ${lowInventory.map((i) => i.title).slice(0, 3).join(', ')}`
-                      : activeBatches[0]
-                      ? `Letzte Charge: ${activeBatches[0].payload.batchNumber} (${activeBatches[0].title})`
-                      : 'Noch keine Vorräte oder Ernten eingetragen.'}
                   </div>
                 </section>
               );
@@ -528,54 +589,60 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="projects"
-                  className={`${mobileHideClass} lg:col-span-6 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold">Projekte & Einkaufsbedarf</h2>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setActiveModule('projects')}
-                        className="text-xs font-semibold text-[#233A29] dark:text-[#BBE774] hover:underline"
-                      >
-                        Projekte →
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveModule('management')}
-                        className="text-xs font-semibold text-[#597CD4] hover:underline"
-                      >
-                        Einkauf ({activeShopping.length}) →
-                      </button>
+                  <div className="h-1.5 w-full bg-[#9333EA]" />
+                  <div className="p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                        <Hammer className="w-4 h-4 text-[#9333EA]" />
+                        Projekte & Einkauf
+                      </h2>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setActiveModule('projects')}
+                          className="text-xs font-semibold text-[#9333EA] hover:underline"
+                        >
+                          Projekte →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveModule('management')}
+                          className="text-xs font-semibold text-[#597CD4] hover:underline"
+                        >
+                          Einkauf ({activeShopping.length}) →
+                        </button>
+                      </div>
                     </div>
+                    {activeProjects.length === 0 ? (
+                      <p className="text-xs text-neutral-500">Keine laufenden Bau- oder Hofprojekte.</p>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {activeProjects.slice(0, 3).map((proj) => {
+                          const steps = proj.payload.steps || [];
+                          const done = steps.filter((s) => s.done).length;
+                          const pct = steps.length > 0 ? Math.round((done / steps.length) * 100) : 0;
+                          return (
+                            <div key={proj.id} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-medium">{proj.title}</span>
+                                <span className="text-neutral-500 font-mono-num">
+                                  {proj.payload.status} · {pct}%
+                                </span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                                <div
+                                  className="h-full bg-[#9333EA]"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                  {activeProjects.length === 0 ? (
-                    <p className="text-xs text-neutral-500">Keine laufenden Bau- oder Hofprojekte.</p>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {activeProjects.slice(0, 3).map((proj) => {
-                        const steps = proj.payload.steps || [];
-                        const done = steps.filter((s) => s.done).length;
-                        const pct = steps.length > 0 ? Math.round((done / steps.length) * 100) : 0;
-                        return (
-                          <div key={proj.id} className="space-y-1">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-medium">{proj.title}</span>
-                              <span className="text-neutral-500 font-mono-num">
-                                {proj.payload.status} · {pct}%
-                              </span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
-                              <div
-                                className="h-full bg-[#233A29] dark:bg-[#BBE774]"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </section>
               );
             }
@@ -584,7 +651,7 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="notes"
-                  className={`${mobileHideClass} lg:col-span-6 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
                 >
                   <div className="flex items-center justify-between">
                     <h2 className="font-display text-lg font-semibold">

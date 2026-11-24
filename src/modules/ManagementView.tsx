@@ -245,7 +245,10 @@ export const ManagementView: React.FC = () => {
   // Equipment with maintenance due
   const activeEquipment = useMemo(() => equipment.filter((e) => !e.archived), [equipment]);
   const activeShopping = useMemo(() => shoppingItems.filter((s) => !s.archived), [shoppingItems]);
-  const activeDocuments = useMemo(() => documents.filter((d) => !d.archived), [documents]);
+  const activeDocuments = useMemo(
+    () => documents.filter((d) => !d.archived && d.id !== 'garden_map_schema_v1'),
+    [documents]
+  );
 
   // Collect all archived records across collections for soft-delete trash
   const archivedAll = useMemo(() => {

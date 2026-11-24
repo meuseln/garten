@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Archive, Edit3, Grid, List, Plus, Search } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
 import { AREA_TYPES } from '../data/botanicalCatalog';
-import { EmptyState, Modal, ModuleHeader, PaginationControls, usePagination } from '../components/ui/SharedUI';
+import { EmptyState, Modal, ModuleHeader, PaginationControls, SegmentedTabs, usePagination } from '../components/ui/SharedUI';
+import { GardenMapCanvas } from '../components/property/GardenMapCanvas';
 import type { AreaPayload, HomesteadRecord } from '../types/homestead';
 
 const EMPTY_AREA: AreaPayload = {
@@ -21,6 +22,7 @@ export const PropertyView: React.FC = () => {
   const { areas, createRecord, updateRecord, archiveRecord, pushToast } = useHomestead();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('Alle');
+  const [tab, setTab] = useState<'map' | 'list'>('map');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HomesteadRecord<AreaPayload> | null>(null);
@@ -114,6 +116,19 @@ export const PropertyView: React.FC = () => {
         }
       />
 
+      <SegmentedTabs
+        tabs={[
+          { id: 'map', label: 'Gartenkarte (S/W-Schema)' },
+          { id: 'list', label: `Flächen & Beete (${activeAreas.length})` },
+        ]}
+        activeTab={tab}
+        onChange={(id) => setTab(id as 'map' | 'list')}
+      />
+
+      {tab === 'map' && <GardenMapCanvas />}
+
+      {tab === 'list' && (
+        <>
       {/* Filter & Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         <div className="flex flex-1 gap-2">
@@ -295,6 +310,8 @@ export const PropertyView: React.FC = () => {
           onPageChange={pagedAreas.setPage}
           itemLabel="Bereiche"
         />
+        </>
+      )}
         </>
       )}
 

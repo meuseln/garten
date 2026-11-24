@@ -84,12 +84,13 @@ import type {
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardCardConfig[] = [
   { id: 'weather', label: 'Wetter & Gartenwetter', visible: true, priority: 1 },
-  { id: 'tasks', label: 'Aufgaben & Termine', visible: true, priority: 2 },
-  { id: 'garden', label: 'Garten & Aussaaten', visible: true, priority: 3 },
-  { id: 'animals', label: 'Tiere & Futter', visible: true, priority: 4 },
-  { id: 'pantry', label: 'Vorräte & Ernten', visible: true, priority: 5 },
-  { id: 'projects', label: 'Projekte & Einkauf', visible: true, priority: 6 },
-  { id: 'notes', label: 'Persönliche Notizen', visible: true, priority: 7 },
+  { id: 'assistant', label: 'Hof-Assistent (KI)', visible: true, priority: 2 },
+  { id: 'tasks', label: 'Aufgaben & Termine', visible: true, priority: 3 },
+  { id: 'garden', label: 'Garten & Aussaaten', visible: true, priority: 4 },
+  { id: 'animals', label: 'Tiere & Futter', visible: true, priority: 5 },
+  { id: 'pantry', label: 'Vorräte & Ernten', visible: true, priority: 6 },
+  { id: 'projects', label: 'Projekte & Einkauf', visible: true, priority: 7 },
+  { id: 'notes', label: 'Persönliche Notizen', visible: true, priority: 8 },
 ];
 
 export const DEFAULT_NOTIFICATION_SETTINGS: UserNotificationSettings = {

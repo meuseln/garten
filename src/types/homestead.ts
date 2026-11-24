@@ -137,6 +137,9 @@ export interface PlantPayload {
   processingSuitability: string;
   seedSource: string;
   sourceRef: string;
+  goodNeighbors?: string;
+  badNeighbors?: string;
+  careTip?: string;
   // Tree / Woody fields optional
   isTree?: boolean;
   rootstock?: string;
@@ -467,6 +470,20 @@ export interface ShoppingPayload {
   linkedProject?: string;
 }
 
+export interface GardenMapItem {
+  id: string;
+  kind: 'rect' | 'polygon' | 'label';
+  label: string;
+  color: string;
+  linkedAreaId?: string;
+  notes?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  points?: Array<{ x: number; y: number }>;
+}
+
 export interface DocumentPayload {
   docType: 'Rechnung' | 'Bauplan' | 'Bedienungsanleitung' | 'Tierunterlage' | 'Rezept' | 'Bodenanalyse' | 'Pflanzplan' | 'Grundstück' | 'Sonstiges';
   linkedModule: string;
@@ -474,6 +491,7 @@ export interface DocumentPayload {
   fileName: string;
   externalUrl: string;
   notes: string;
+  mapItems?: GardenMapItem[];
 }
 
 export interface EmergencyConfigPayload {

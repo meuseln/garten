@@ -10,8 +10,12 @@ import {
   Plus,
   Repeat,
   RotateCcw,
+  Scissors,
+  Sprout,
+  Sun,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
+import { MONTHLY_GARDEN_CALENDAR } from '../data/botanicalCatalog';
 import { downloadIcsFile } from '../lib/exports';
 import {
   EmptyState,
@@ -68,6 +72,19 @@ function getAssigneeDotColor(assignee: AssigneeScope): string {
   if (assignee === 'Nico') return '#BBE774';
   if (assignee === 'Chris') return '#F28090';
   return '#597CD4';
+}
+
+function getCategoryStyle(category: CalendarCategory): string {
+  if (category === 'Ernte' || category === 'Verarbeitung' || category === 'Vorratskontrolle') {
+    return 'bg-[#FFC814]/20 text-[#7A4400] dark:bg-[#FFC814]/15 dark:text-[#FFD65A] border-[#D97706]/30';
+  }
+  if (category === 'Aussaat' || category === 'Pflanzung' || category === 'Garten' || category === 'Saison') {
+    return 'bg-[#BBE774]/25 text-[#233A29] dark:bg-[#BBE774]/15 dark:text-[#C9EE8B] border-[#65A30D]/30';
+  }
+  if (category === 'Tierpflege' || category === 'Fütterung' || category === 'Reinigung' || category === 'Tierarzt') {
+    return 'bg-[#597CD4]/15 text-[#274690] dark:bg-[#597CD4]/20 dark:text-[#9BB6FF] border-[#597CD4]/30';
+  }
+  return 'bg-[#CF6432]/15 text-[#8A3614] dark:bg-[#CF6432]/20 dark:text-[#F4A07B] border-[#CF6432]/30';
 }
 
 function startOfWeekMonday(date: Date): Date {
@@ -162,6 +179,37 @@ export const CalendarView: React.FC = () => {
     setShowModal(true);
   };
 
+  const openQuickSeasonalTask = (
+    title: string,
+    category: CalendarCategory,
+    targetYear: number,
+    targetMonthIdx: number
+  ) => {
+    const now = new Date();
+    const isSameMonth = now.getFullYear() === targetYear && now.getMonth() === targetMonthIdx;
+    const defaultDate = isSameMonth
+      ? todayStr
+      : `${targetYear}-${String(targetMonthIdx + 1).padStart(2, '0')}-15`;
+    setEditing(null);
+    setFormTitle(title);
+    setFormPayload({
+      eventType: 'task',
+      description: `Saison-Tipp für ${MONTHLY_GARDEN_CALENDAR[targetMonthIdx]?.monthName || 'diesen Monat'} (Mellenbach-Glasbach).`,
+      date: defaultDate,
+      startTime: '10:00',
+      endTime: '11:00',
+      category,
+      assignee: activeIdentity || 'Gemeinsam',
+      recurrence: 'none',
+      reminderMinutes: 60,
+      areaId: '',
+      areaName: '',
+      completed: false,
+      notes: '',
+    });
+    setShowModal(true);
+  };
+
   const openEditModal = (ev: HomesteadRecord<CalendarEventPayload>) => {
     setEditing(ev);
     setFormTitle(ev.title);
@@ -221,6 +269,7 @@ export const CalendarView: React.FC = () => {
   const cursorObj = new Date(cursorDate + 'T12:00:00');
   const currentYear = cursorObj.getFullYear();
   const currentMonth = cursorObj.getMonth();
+  const currentSeasonGuide = MONTHLY_GARDEN_CALENDAR[currentMonth] || MONTHLY_GARDEN_CALENDAR[0];
 
   const monthGridDays = useMemo(() => {
     const first = new Date(currentYear, currentMonth, 1, 12, 0, 0);
@@ -312,7 +361,9 @@ export const CalendarView: React.FC = () => {
               <span>·</span>
               <span>{ev.payload.assignee}</span>
               <span>·</span>
-              <span>{ev.payload.category}</span>
+              <span className={`px-1.5 py-0.5 rounded border text-[11px] font-medium ${getCategoryStyle(ev.payload.category)}`}>
+                {ev.payload.category}
+              </span>
               {ev.payload.areaName && (
                 <>
                   <span>·</span>
@@ -481,8 +532,13 @@ export const CalendarView: React.FC = () => {
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <div className="flex items-center gap-3">
-            <span className="font-display font-semibold text-sm sm:text-base">
+          <div className="flex items-center gap-3 flex-wrap justify-center">
+            <span className="font-display font-semibold text-sm sm:text-base flex items-center gap-2">
+              <span
+                className="w-3 h-3 rounded-full shrink-0"
+                style={{ backgroundColor: currentSeasonGuide.seasonColor }}
+                aria-hidden="true"
+              />
               {viewMode === 'day' &&
                 cursorObj.toLocaleDateString('de-DE', {
                   weekday: 'long',
@@ -512,6 +568,116 @@ export const CalendarView: React.FC = () => {
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+      )}
+
+      {/* Colorful Seasonal Guide for Current Viewed Month */}
+      {viewMode !== 'year' && (
+        <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+          <div className="h-1.5 w-full" style={{ backgroundColor: currentSeasonGuide.seasonColor }} />
+          <div className="p-4 sm:p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="font-display text-base font-semibold flex items-center gap-2">
+                  <Sprout className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+                  Was passt im {currentSeasonGuide.monthName}? · {currentSeasonGuide.seasonLabel}
+                </h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Lockere Übersicht fürs Schwarzatal — auf einen Punkt tippen, um ihn als Aufgabe in den Kalender zu übernehmen.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+              {/* Vorzucht */}
+              <div className="rounded-xl border border-[#597CD4]/30 bg-[#597CD4]/8 dark:bg-[#597CD4]/15 p-3 space-y-2">
+                <div className="font-semibold text-[#274690] dark:text-[#9BB6FF] flex items-center gap-1.5">
+                  <Sun className="w-3.5 h-3.5 shrink-0" />
+                  Vorzucht (Fensterbank)
+                </div>
+                <div className="space-y-1">
+                  {currentSeasonGuide.preCulture.map((item) =>
+                    item === '—' ? (
+                      <div key={item} className="text-neutral-400">—</div>
+                    ) : (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => openQuickSeasonalTask(`Vorzucht: ${item}`, 'Aussaat', currentYear, currentMonth)}
+                        className="w-full text-left px-2 py-1.5 rounded-lg bg-white/80 dark:bg-[#0F1412]/70 hover:bg-white dark:hover:bg-[#0F1412] border border-[#597CD4]/20 flex items-center justify-between gap-2 transition"
+                      >
+                        <span className="leading-snug">{item}</span>
+                        <Plus className="w-3.5 h-3.5 text-[#597CD4] shrink-0" />
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* Aussaat & Pflanzung */}
+              <div className="rounded-xl border border-[#65A30D]/35 bg-[#BBE774]/18 dark:bg-[#BBE774]/10 p-3 space-y-2">
+                <div className="font-semibold text-[#233A29] dark:text-[#BBE774] flex items-center gap-1.5">
+                  <Sprout className="w-3.5 h-3.5 shrink-0" />
+                  Aussaat & Pflanzung
+                </div>
+                <div className="space-y-1">
+                  {currentSeasonGuide.sowingAndPlanting.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => openQuickSeasonalTask(`Anbau: ${item}`, 'Pflanzung', currentYear, currentMonth)}
+                      className="w-full text-left px-2 py-1.5 rounded-lg bg-white/80 dark:bg-[#0F1412]/70 hover:bg-white dark:hover:bg-[#0F1412] border border-[#65A30D]/25 flex items-center justify-between gap-2 transition"
+                    >
+                      <span className="leading-snug">{item}</span>
+                      <Plus className="w-3.5 h-3.5 text-[#3B6912] dark:text-[#BBE774] shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ernte */}
+              <div className="rounded-xl border border-[#D97706]/35 bg-[#FFC814]/18 dark:bg-[#FFC814]/10 p-3 space-y-2">
+                <div className="font-semibold text-[#7A4400] dark:text-[#FFD65A] flex items-center gap-1.5">
+                  <CalendarIcon className="w-3.5 h-3.5 shrink-0" />
+                  Erntezeit & Genießen
+                </div>
+                <div className="space-y-1">
+                  {currentSeasonGuide.harvest.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => openQuickSeasonalTask(`Ernten: ${item}`, 'Ernte', currentYear, currentMonth)}
+                      className="w-full text-left px-2 py-1.5 rounded-lg bg-white/80 dark:bg-[#0F1412]/70 hover:bg-white dark:hover:bg-[#0F1412] border border-[#D97706]/25 flex items-center justify-between gap-2 transition"
+                    >
+                      <span className="leading-snug">{item}</span>
+                      <Plus className="w-3.5 h-3.5 text-[#D97706] shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pflege & Schnitt */}
+              <div className="rounded-xl border border-[#CF6432]/30 bg-[#CF6432]/12 dark:bg-[#CF6432]/15 p-3 space-y-2">
+                <div className="font-semibold text-[#8A3614] dark:text-[#F4A07B] flex items-center gap-1.5">
+                  <Scissors className="w-3.5 h-3.5 shrink-0" />
+                  Pflege, Schnitt & Hof
+                </div>
+                <div className="space-y-1">
+                  {currentSeasonGuide.care.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => openQuickSeasonalTask(item, 'Pflege', currentYear, currentMonth)}
+                      className="w-full text-left px-2 py-1.5 rounded-lg bg-white/80 dark:bg-[#0F1412]/70 hover:bg-white dark:hover:bg-[#0F1412] border border-[#CF6432]/25 flex items-center justify-between gap-2 transition"
+                    >
+                      <span className="leading-snug">{item}</span>
+                      <Plus className="w-3.5 h-3.5 text-[#CF6432] shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Day View */}
@@ -560,18 +726,18 @@ export const CalendarView: React.FC = () => {
                       key={ev.id}
                       type="button"
                       onClick={() => openEditModal(ev)}
-                      className="w-full text-left p-2 rounded-lg bg-[#F7F7F5] dark:bg-[#0F1412] hover:opacity-90 text-xs space-y-0.5"
+                      className={`w-full text-left p-2 rounded-lg border hover:opacity-90 text-xs space-y-0.5 ${getCategoryStyle(ev.payload.category)}`}
                     >
                       <div className="flex items-center gap-1.5">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: getAssigneeDotColor(ev.payload.assignee) }}
                         />
-                        <span className={`font-medium truncate ${ev.payload.completed ? 'line-through text-neutral-400' : ''}`}>
+                        <span className={`font-medium truncate ${ev.payload.completed ? 'line-through opacity-60' : ''}`}>
                           {ev.title}
                         </span>
                       </div>
-                      <div className="text-[10px] text-neutral-500 font-mono-num">
+                      <div className="text-[10px] opacity-80 font-mono-num">
                         {ev.payload.startTime || 'Ganztägig'} · {ev.payload.category}
                       </div>
                     </button>
@@ -587,6 +753,7 @@ export const CalendarView: React.FC = () => {
       {viewMode === 'month' && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="h-1.5 w-full" style={{ backgroundColor: currentSeasonGuide.seasonColor }} />
             <div className="grid grid-cols-7 border-b border-neutral-200 dark:border-neutral-800 text-center text-xs font-semibold text-neutral-500 py-2">
               {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => (
                 <div key={w}>{w}</div>
@@ -602,9 +769,9 @@ export const CalendarView: React.FC = () => {
                     key={cell.dateStr}
                     type="button"
                     onClick={() => setCursorDate(cell.dateStr)}
-                    className={`min-h-[84px] sm:min-h-[104px] p-1.5 sm:p-2 border-b border-r border-neutral-100 dark:border-neutral-800/80 text-left flex flex-col gap-1 transition hover:bg-neutral-50 dark:hover:bg-neutral-900/40 ${
+                    className={`min-h-[84px] sm:min-h-[108px] p-1.5 sm:p-2 border-b border-r border-neutral-100 dark:border-neutral-800/80 text-left flex flex-col gap-1 transition hover:bg-neutral-50 dark:hover:bg-neutral-900/40 ${
                       !cell.inMonth ? 'opacity-40' : ''
-                    } ${isSelected ? 'bg-[#BBE774]/15' : ''}`}
+                    } ${isSelected ? 'bg-[#BBE774]/18 ring-1 ring-inset ring-[#65A30D]/40' : ''}`}
                   >
                     <span
                       className={`text-xs font-mono-num w-6 h-6 rounded-full flex items-center justify-center ${
@@ -613,17 +780,17 @@ export const CalendarView: React.FC = () => {
                     >
                       {cell.dayNum}
                     </span>
-                    <div className="space-y-0.5 w-full overflow-hidden">
+                    <div className="space-y-1 w-full overflow-hidden">
                       {list.slice(0, 3).map((ev) => (
                         <div
                           key={ev.id}
-                          className="flex items-center gap-1 text-[10px] sm:text-[11px] truncate"
+                          className={`flex items-center gap-1 text-[10px] sm:text-[11px] px-1 py-0.5 rounded border truncate ${getCategoryStyle(ev.payload.category)}`}
                         >
                           <span
-                            className="w-2 h-2 rounded-full shrink-0"
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
                             style={{ backgroundColor: getAssigneeDotColor(ev.payload.assignee) }}
                           />
-                          <span className={`truncate ${ev.payload.completed ? 'line-through text-neutral-400' : ''}`}>
+                          <span className={`truncate ${ev.payload.completed ? 'line-through opacity-60' : ''}`}>
                             {ev.title}
                           </span>
                         </div>
@@ -669,45 +836,63 @@ export const CalendarView: React.FC = () => {
             const monthKey = `${currentYear}-${String(mIdx + 1).padStart(2, '0')}`;
             const monthItems = filteredEvents.filter((e) => e.payload.date.startsWith(monthKey));
             const label = new Date(currentYear, mIdx, 1).toLocaleDateString('de-DE', { month: 'long' });
+            const guide = MONTHLY_GARDEN_CALENDAR[mIdx] || MONTHLY_GARDEN_CALENDAR[0];
             return (
               <div
                 key={monthKey}
-                className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-2"
+                className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col"
               >
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCursorDate(`${monthKey}-01`);
-                      setViewMode('month');
-                    }}
-                    className="font-display font-semibold text-sm hover:underline"
-                  >
-                    {label}
-                  </button>
-                  <span className="text-xs font-mono-num text-neutral-500">{monthItems.length} Einträge</span>
-                </div>
-                {monthItems.length === 0 ? (
-                  <p className="text-xs text-neutral-400">Keine Einträge</p>
-                ) : (
-                  <div className="space-y-1 max-h-36 overflow-y-auto">
-                    {monthItems.slice(0, 6).map((ev) => (
-                      <button
-                        key={ev.id}
-                        type="button"
-                        onClick={() => openEditModal(ev)}
-                        className="w-full text-left text-xs flex items-center gap-1.5 hover:underline truncate"
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: getAssigneeDotColor(ev.payload.assignee) }}
-                        />
-                        <span className="font-mono-num text-neutral-500">{ev.payload.date.slice(8, 10)}.</span>
-                        <span className="truncate">{ev.title}</span>
-                      </button>
-                    ))}
+                <div className="h-1.5 w-full" style={{ backgroundColor: guide.seasonColor }} />
+                <div className="p-4 space-y-2.5 flex-1 flex flex-col">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCursorDate(`${monthKey}-01`);
+                        setViewMode('month');
+                      }}
+                      className="font-display font-semibold text-sm hover:underline text-left"
+                    >
+                      {label}
+                    </button>
+                    <span className="text-xs font-mono-num text-neutral-500">{monthItems.length} Termine</span>
                   </div>
-                )}
+
+                  <div className="text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+                    {guide.seasonLabel}
+                  </div>
+
+                  <div className="space-y-1 text-[11px]">
+                    <div className="px-2 py-1 rounded-lg bg-[#BBE774]/20 dark:bg-[#BBE774]/10 text-[#233A29] dark:text-[#C9EE8B] truncate">
+                      <strong>Anbau:</strong> {guide.sowingAndPlanting[0] || guide.preCulture[0]}
+                    </div>
+                    <div className="px-2 py-1 rounded-lg bg-[#FFC814]/20 dark:bg-[#FFC814]/10 text-[#7A4400] dark:text-[#FFD65A] truncate">
+                      <strong>Ernte:</strong> {guide.harvest[0]}
+                    </div>
+                  </div>
+
+                  {monthItems.length === 0 ? (
+                    <p className="text-xs text-neutral-400 pt-1">Noch keine eigenen Termine</p>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto pt-1 border-t border-neutral-100 dark:border-neutral-800">
+                      {monthItems.slice(0, 6).map((ev) => (
+                        <button
+                          key={ev.id}
+                          type="button"
+                          onClick={() => openEditModal(ev)}
+                          className="w-full text-left text-xs flex items-center gap-1.5 hover:underline truncate"
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: getAssigneeDotColor(ev.payload.assignee) }}
+                          />
+                          <span className="font-mono-num text-neutral-500">{ev.payload.date.slice(8, 10)}.</span>
+                          <span className="truncate">{ev.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

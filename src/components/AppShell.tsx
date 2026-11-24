@@ -32,19 +32,20 @@ import type { MainModuleId } from '../types/homestead';
 export const NAV_ITEMS: Array<{
   id: MainModuleId;
   label: string;
+  color: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'property', label: 'Grundstück', icon: MapPin },
-  { id: 'cultivation', label: 'Anbau', icon: Sprout },
-  { id: 'animals', label: 'Tiere', icon: Bird },
-  { id: 'pantry', label: 'Vorräte', icon: Warehouse },
-  { id: 'calendar', label: 'Kalender', icon: Calendar },
-  { id: 'resources', label: 'Ressourcen', icon: Droplets },
-  { id: 'projects', label: 'Projekte', icon: Hammer },
-  { id: 'knowledge', label: 'Wissen', icon: BookOpen },
-  { id: 'nature', label: 'Vögel & Pilze', icon: Binoculars },
-  { id: 'management', label: 'Verwaltung', icon: FolderKanban },
+  { id: 'dashboard', label: 'Dashboard', color: '#3B6912', icon: LayoutDashboard },
+  { id: 'property', label: 'Grundstück', color: '#0D9488', icon: MapPin },
+  { id: 'cultivation', label: 'Anbau', color: '#16A34A', icon: Sprout },
+  { id: 'animals', label: 'Tiere', color: '#D97706', icon: Bird },
+  { id: 'pantry', label: 'Vorräte', color: '#EA580C', icon: Warehouse },
+  { id: 'calendar', label: 'Kalender', color: '#597CD4', icon: Calendar },
+  { id: 'resources', label: 'Ressourcen', color: '#0284C7', icon: Droplets },
+  { id: 'projects', label: 'Projekte', color: '#9333EA', icon: Hammer },
+  { id: 'knowledge', label: 'Wissen', color: '#2563EB', icon: BookOpen },
+  { id: 'nature', label: 'Vögel & Pilze', color: '#65A30D', icon: Binoculars },
+  { id: 'management', label: 'Verwaltung', color: '#CF6432', icon: FolderKanban },
 ];
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -120,10 +121,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition whitespace-nowrap ${
                   active
                     ? 'bg-[#233A29] text-white'
-                    : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/70'
+                    : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/70'
                 }`}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <span style={{ color: active ? '#BBE774' : item.color }} className="shrink-0">
+                  <Icon className="w-4 h-4" />
+                </span>
                 <span>{item.label}</span>
               </button>
             );
@@ -179,8 +182,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Bar (Single Row) */}
-        <header className="sticky top-0 z-30 h-14 sm:h-16 bg-white/95 dark:bg-[#161D1A]/95 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800 px-3 sm:px-6 flex items-center justify-between gap-4">
+        {/* Sticky Top Header + Mobile Top Tab-Bar */}
+        <div className="sticky top-0 z-30 bg-white/95 dark:bg-[#161D1A]/95 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800">
+          <header className="h-14 sm:h-16 px-3 sm:px-6 flex items-center justify-between gap-4">
           {/* Zone 1: Brand on mobile / Section Title on Desktop */}
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -376,6 +380,54 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           </div>
         </header>
 
+          {/* Mobile Top Navigation Tab-Bar (moved to top so nothing at the bottom gets covered) */}
+          <nav
+            aria-label="Mobile Navigation"
+            className="lg:hidden border-t border-neutral-100 dark:border-neutral-800/80 grid grid-cols-5 items-center bg-white/95 dark:bg-[#161D1A]/95"
+          >
+            {(
+              [
+                { id: 'dashboard', label: 'Start', color: '#3B6912', icon: LayoutDashboard },
+                { id: 'property', label: 'Karte', color: '#0D9488', icon: MapPin },
+                { id: 'cultivation', label: 'Anbau', color: '#16A34A', icon: Sprout },
+                { id: 'calendar', label: 'Kalender', color: '#597CD4', icon: Calendar },
+              ] as Array<{ id: MainModuleId; label: string; color: string; icon: React.ComponentType<{ className?: string }> }>
+            ).map((item) => {
+              const Icon = item.icon;
+              const active = activeModule === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveModule(item.id)}
+                  className={`flex flex-col items-center justify-center min-h-[46px] py-1 text-[11px] border-b-2 transition ${
+                    active
+                      ? 'border-[#233A29] dark:border-[#BBE774] text-[#233A29] dark:text-[#BBE774] font-semibold bg-[#BBE774]/10'
+                      : 'border-transparent text-neutral-600 dark:text-neutral-400 font-medium'
+                  }`}
+                >
+                  <span style={{ color: active ? undefined : item.color }}>
+                    <Icon className="w-4 h-4 mb-0.5" />
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setShowMobileDrawer(true)}
+              className={`flex flex-col items-center justify-center min-h-[46px] py-1 text-[11px] border-b-2 transition ${
+                !['dashboard', 'property', 'cultivation', 'calendar'].includes(activeModule)
+                  ? 'border-[#CF6432] text-[#CF6432] font-semibold bg-[#CF6432]/10'
+                  : 'border-transparent text-neutral-600 dark:text-neutral-400 font-medium'
+              }`}
+            >
+              <Menu className="w-4 h-4 mb-0.5" />
+              <span>Mehr</span>
+            </button>
+          </nav>
+        </div>
+
         {/* Incoming Unacknowledged Ping Banner */}
         {unackIncomingPings.length > 0 && (
           <div
@@ -432,51 +484,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         )}
 
         {/* Main Viewport */}
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-10 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-8 lg:pb-10 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>
 
-      {/* Mobile Fixed Bottom Navigation Bar */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-white/95 dark:bg-[#161D1A]/95 backdrop-blur-md border-t border-neutral-200 dark:border-neutral-800 grid grid-cols-5 items-center">
-        {(
-          [
-            { id: 'dashboard', label: 'Start', icon: LayoutDashboard },
-            { id: 'calendar', label: 'Kalender', icon: Calendar },
-            { id: 'cultivation', label: 'Anbau', icon: Sprout },
-            { id: 'pantry', label: 'Vorräte', icon: Warehouse },
-          ] as Array<{ id: MainModuleId; label: string; icon: React.ComponentType<{ className?: string }> }>
-        ).map((item) => {
-          const Icon = item.icon;
-          const active = activeModule === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveModule(item.id)}
-              className={`flex flex-col items-center justify-center h-full min-h-[44px] text-[10px] font-medium ${
-                active ? 'text-[#233A29] dark:text-[#BBE774] font-semibold' : 'text-neutral-500'
-              }`}
-            >
-              <Icon className="w-5 h-5 mb-0.5" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setShowMobileDrawer(true)}
-          className="flex flex-col items-center justify-center h-full min-h-[44px] text-[10px] font-medium text-neutral-500"
-        >
-          <Menu className="w-5 h-5 mb-0.5" />
-          <span>Mehr</span>
-        </button>
-      </nav>
-
       {/* Mobile Full Module Drawer */}
       {showMobileDrawer && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end">
-          <div className="w-full bg-white dark:bg-[#161D1A] rounded-t-3xl p-5 max-h-[82vh] overflow-y-auto space-y-4">
+        <div className="lg:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-4 px-3">
+          <div className="w-full max-w-md bg-white dark:bg-[#161D1A] rounded-2xl p-5 max-h-[82vh] overflow-y-auto space-y-4 shadow-2xl border border-neutral-200 dark:border-neutral-800">
             <div className="flex items-center justify-between">
               <span className="font-display font-bold text-lg">Alle Bereiche</span>
               <button
@@ -488,7 +504,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
-              {[...NAV_ITEMS, { id: 'weather' as MainModuleId, label: 'Wetter', icon: CloudSun }].map(
+              {[...NAV_ITEMS, { id: 'weather' as MainModuleId, label: 'Wetter', color: '#597CD4', icon: CloudSun }].map(
                 (item) => {
                   const Icon = item.icon;
                   const active = activeModule === item.id;
@@ -506,8 +522,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                           : 'border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200'
                       }`}
                     >
-                      <Icon className="w-4 h-4 shrink-0" />
-                      <span>{item.label}</span>
+                      <span style={{ color: active ? '#BBE774' : item.color }} className="shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </span>
+                      <span className="truncate">{item.label}</span>
                     </button>
                   );
                 }
@@ -539,7 +557,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       )}
 
       {/* Toast Stack */}
-      <div className="fixed bottom-20 lg:bottom-6 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      <div className="fixed bottom-4 lg:bottom-6 right-4 z-50 flex flex-col gap-2 max-w-sm">
         {toasts.map((t) => (
           <div
             key={t.id}

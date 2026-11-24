@@ -2,17 +2,27 @@ import React, { useMemo, useState } from 'react';
 import {
   AlertCircle,
   Archive,
+  ArrowRight,
   CalendarPlus,
   Check,
   Edit3,
   GitCompare,
   Plus,
+  RefreshCw,
   Search,
+  Sparkles,
+  Sprout,
   Star,
   Trees,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
-import { BOTANICAL_SPECIES_GROUPS, PHENOLOGICAL_PHASES } from '../data/botanicalCatalog';
+import {
+  BOTANICAL_SPECIES_GROUPS,
+  MONTHLY_GARDEN_CALENDAR,
+  PHENOLOGICAL_PHASES,
+  buildStarterPlants,
+  suggestCropRotation,
+} from '../data/botanicalCatalog';
 import {
   EmptyState,
   Modal,
@@ -27,6 +37,29 @@ import type {
   PlantPayload,
   SeedPayload,
 } from '../types/homestead';
+
+function getGroupColor(group: string): string {
+  switch (group) {
+    case 'Fruchtgemüse':
+      return '#EF4444';
+    case 'Wurzel- & Knollengemüse':
+      return '#EA580C';
+    case 'Kohlgemüse':
+      return '#16A34A';
+    case 'Blattgemüse':
+      return '#65A30D';
+    case 'Hülsenfrüchte':
+      return '#0D9488';
+    case 'Zwiebelgewächse':
+      return '#9333EA';
+    case 'Obst & Beeren':
+      return '#D45B6E';
+    case 'Kräuter':
+      return '#0284C7';
+    default:
+      return '#3B6912';
+  }
+}
 
 const EMPTY_PLANT: PlantPayload = {
   species: 'Tomaten',
@@ -54,6 +87,9 @@ const EMPTY_PLANT: PlantPayload = {
   processingSuitability: '',
   seedSource: '',
   sourceRef: '',
+  goodNeighbors: '',
+  badNeighbors: '',
+  careTip: '',
   isTree: false,
 };
 
@@ -67,6 +103,7 @@ export const CultivationView: React.FC = () => {
     createRecord,
     updateRecord,
     archiveRecord,
+    seedReferenceDatabases,
     pushToast,
   } = useHomestead();
 
@@ -75,6 +112,16 @@ export const CultivationView: React.FC = () => {
   const [groupFilter, setGroupFilter] = useState<string>('Alle');
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [showCompareModal, setShowCompareModal] = useState(false);
+  const [syncingStarter, setSyncingStarter] = useState(false);
+
+  // Quick relaxed bed entry state
+  const [quickBedAreaId, setQuickBedAreaId] = useState('');
+  const [quickBedCustomArea, setQuickBedCustomArea] = useState('');
+  const [quickBedPlantId, setQuickBedPlantId] = useState('');
+  const [quickBedCustomPlant, setQuickBedCustomPlant] = useState('');
+  const [quickBedStatus, setQuickBedStatus] = useState<PlantingPayload['status']>('Gepflanzt');
+  const [quickBedYear, setQuickBedYear] = useState<number>(() => new Date().getFullYear());
+  const [savingQuickBed, setSavingQuickBed] = useState(false);
 
   // Plant Modal
   const [plantModal, setPlantModal] = useState(false);
@@ -131,6 +178,33 @@ export const CultivationView: React.FC = () => {
   const activePlantings = useMemo(() => plantings.filter((p) => !p.archived), [plantings]);
   const activeSeeds = useMemo(() => seeds.filter((s) => !s.archived), [seeds]);
   const activeAreas = useMemo(() => areas.filter((a) => !a.archived), [areas]);
+
+  const missingStarterCount = useMemo(() => {
+    const existingKeys = new Set(
+      activePlants.map((p) => `${p.payload.species.toLowerCase()}::${p.payload.variety.toLowerCase()}`)
+    );
+    const existingTitles = new Set(activePlants.map((p) => p.title.toLowerCase()));
+    return buildStarterPlants().filter((sp) => {
+      const key = `${sp.payload.species.toLowerCase()}::${sp.payload.variety.toLowerCase()}`;
+      return !existingKeys.has(key) && !existingTitles.has(sp.title.toLowerCase());
+    }).length;
+  }, [activePlants]);
+
+  const handleSyncStarterPlants = async () => {
+    setSyncingStarter(true);
+    try {
+      const res = await seedReferenceDatabases();
+      if (res.added > 0) {
+        pushToast('success', `${res.added} neue Obst-, Gemüse- & Fachwissen-Einträge geladen.`);
+      } else {
+        pushToast('info', 'Alle Sorten aus dem Starter-Katalog sind bereits vorhanden.');
+      }
+    } catch {
+      pushToast('error', 'Nachladen fehlgeschlagen.');
+    } finally {
+      setSyncingStarter(false);
+    }
+  };
 
   const filteredPlants = useMemo(() => {
     return activePlants.filter((p) => {
@@ -267,10 +341,94 @@ export const CultivationView: React.FC = () => {
     });
   }, [activePlantings, activeSeeds]);
 
-  const plantPagination = usePagination(filteredPlants, 4);
+  const handleQuickBedSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const chosenArea = activeAreas.find((a) => a.id === quickBedAreaId);
+    const areaName = chosenArea?.title || quickBedCustomArea.trim() || 'Gartenbeet';
+    const chosenPlant = activePlants.find((p) => p.id === quickBedPlantId);
+    const plantName = chosenPlant?.payload.species || quickBedCustomPlant.trim();
+    if (!plantName) {
+      pushToast('warning', 'Bitte kurz auswählen oder eintippen, was auf dem Beet steht.');
+      return;
+    }
+    const variety = chosenPlant?.payload.variety || '';
+    const monthNow = new Date().toLocaleDateString('de-DE', { month: 'long' });
+    setSavingQuickBed(true);
+    try {
+      const title = `${variety ? `${plantName} (${variety})` : plantName} · ${areaName}`;
+      await createRecord('plantings', title, {
+        areaId: chosenArea?.id || '',
+        areaName,
+        plantId: chosenPlant?.id || '',
+        plantName,
+        variety,
+        year: quickBedYear,
+        seasonPhase: quickBedStatus === 'Ausgesät' ? 'Aussaat' : 'Pflanzung',
+        preCultureMonth: chosenPlant?.payload.preCultureWindow || '',
+        sowingMonth: chosenPlant?.payload.sowingWindow || monthNow,
+        plantingMonth: chosenPlant?.payload.plantingWindow || monthNow,
+        harvestMonth: chosenPlant?.payload.harvestWindow || '',
+        preCrop: '',
+        nextCrop: '',
+        companionPlants: chosenPlant?.payload.goodNeighbors || '',
+        nutrientNeed: chosenPlant?.payload.nutrientNeed || 'Mittelzehrer',
+        successionPlan: '',
+        status: quickBedStatus,
+        notes: 'Locker als aktuelle Beetbelegung erfasst.',
+      });
+      setQuickBedPlantId('');
+      setQuickBedCustomPlant('');
+      pushToast('success', `„${plantName}“ auf „${areaName}“ eingetragen.`);
+    } finally {
+      setSavingQuickBed(false);
+    }
+  };
+
+  const handleReserveNextYearCrop = async (
+    source: HomesteadRecord<PlantingPayload>,
+    option: { plantName: string; variety: string; nutrientNeed: string }
+  ) => {
+    const nextYear = source.payload.year + 1;
+    const areaName = source.payload.areaName || 'Beet';
+    const preCropLabel = `${source.payload.plantName}${source.payload.variety ? ` (${source.payload.variety})` : ''}`;
+    const title = `${option.plantName} (${option.variety}) · ${areaName}`;
+    await createRecord('plantings', title, {
+      areaId: source.payload.areaId || '',
+      areaName,
+      plantId: '',
+      plantName: option.plantName,
+      variety: option.variety,
+      year: nextYear,
+      seasonPhase: 'Aussaat',
+      preCultureMonth: '',
+      sowingMonth: '',
+      plantingMonth: '',
+      harvestMonth: '',
+      preCrop: preCropLabel,
+      nextCrop: '',
+      companionPlants: '',
+      nutrientNeed: option.nutrientNeed,
+      successionPlan: `Automatische Pflanzfolge nach ${source.payload.plantName}`,
+      status: 'Geplant',
+      notes: `Aus Pflanzfolge-Generator für ${nextYear} vorgemerkt.`,
+    });
+    if (!source.payload.nextCrop) {
+      await updateRecord(
+        'plantings',
+        source.id,
+        source.title,
+        { ...source.payload, nextCrop: `${option.plantName} (${option.variety})` },
+        source.updatedAtMs
+      );
+    }
+    pushToast('success', `„${option.plantName}“ für ${nextYear} auf „${areaName}“ vorgemerkt.`);
+  };
+
+  const plantPagination = usePagination(filteredPlants, 6);
   const phasePagination = usePagination(PHENOLOGICAL_PHASES, 3);
-  const plantingPagination = usePagination(activePlantings, 5);
-  const seedPagination = usePagination(activeSeeds, 4);
+  const plantingPagination = usePagination(activePlantings, 6);
+  const seedPagination = usePagination(activeSeeds, 6);
+  const currentMonthGuide = MONTHLY_GARDEN_CALENDAR[new Date().getMonth()] || MONTHLY_GARDEN_CALENDAR[0];
 
   return (
     <div className="space-y-6">
@@ -335,7 +493,7 @@ export const CultivationView: React.FC = () => {
         tabs={[
           { id: 'varieties', label: `Sorten (${activePlants.length})` },
           { id: 'season', label: 'Saisonkalender & Phänologie' },
-          { id: 'beds', label: `Beetplanung (${activePlantings.length})` },
+          { id: 'beds', label: `Beete & Pflanzfolge (${activePlantings.length})` },
           { id: 'seeds', label: `Saatgut (${activeSeeds.length})` },
           { id: 'trees', label: 'Obstbäume & Gehölze' },
         ]}
@@ -371,10 +529,33 @@ export const CultivationView: React.FC = () => {
             )}
           </div>
 
+          {missingStarterCount > 0 && (
+            <div className="bg-gradient-to-r from-[#BBE774]/25 via-[#FFC814]/15 to-[#597CD4]/15 dark:from-[#BBE774]/12 dark:via-[#FFC814]/10 dark:to-[#597CD4]/10 border border-[#65A30D]/35 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs space-y-0.5">
+                <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+                  {missingStarterCount} weitere Obst-, Beeren- & Gemüsesorten verfügbar
+                </div>
+                <p className="text-neutral-600 dark:text-neutral-300">
+                  Inklusive Erdbeere, Kirsche, Zwetschge, Birne, Paprika, Gurke, Radieschen, Salat, Spinat & Basilikum samt guten Nachbarn und Tipps.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncStarterPlants}
+                disabled={syncingStarter}
+                className="px-3.5 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 hover:opacity-90 disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncingStarter ? 'animate-spin' : ''}`} />
+                {syncingStarter ? 'Lade Sorten…' : 'Sorten & Tipps nachladen'}
+              </button>
+            </div>
+          )}
+
           {filteredPlants.length === 0 ? (
             <EmptyState
               title={tab === 'trees' ? 'Noch keine Obstbäume oder Gehölze' : 'Keine Sorten gefunden'}
-              description="Erfasse Sorten mit Aussaatfenstern, Abständen, Bodenansprüchen, Fachquellen und eigenen Anbauerfahrungen."
+              description="Erfasse Sorten mit Aussaatfenstern, guten Nachbarn, Pflegetipps und eigenen Gartenerfahrungen."
               actionLabel={tab === 'trees' ? 'Ersten Baum erfassen' : 'Erste Sorte erfassen'}
               onAction={() => openNewPlant(tab === 'trees')}
             />
@@ -383,87 +564,112 @@ export const CultivationView: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {plantPagination.pageItems.map((p) => {
                   const isSelected = compareIds.includes(p.id);
+                  const accentColor = getGroupColor(p.payload.group);
                   return (
                     <article
                       key={p.id}
-                      className={`bg-white dark:bg-[#161D1A] border rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 ${
-                        isSelected ? 'border-[#597CD4]' : 'border-neutral-200 dark:border-neutral-800'
+                      className={`bg-white dark:bg-[#161D1A] border rounded-2xl overflow-hidden flex flex-col justify-between ${
+                        isSelected ? 'border-[#597CD4] ring-1 ring-[#597CD4]/40' : 'border-neutral-200 dark:border-neutral-800'
                       }`}
                     >
-                      <div className="space-y-2">
-                        <div className="text-xs text-neutral-500 flex items-center justify-between gap-2">
-                          <span>
-                            {p.payload.group} · {p.payload.nutrientNeed}
-                          </span>
-                          {p.payload.experienceRating ? (
-                            <span className="inline-flex items-center gap-1 font-mono-num text-[#63390C] dark:text-[#FFC814]">
-                              <Star className="w-3.5 h-3.5 fill-current" />
-                              {p.payload.experienceRating}/5
+                      <div className="h-1.5 w-full" style={{ backgroundColor: accentColor }} />
+                      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-4">
+                        <div className="space-y-2.5">
+                          <div className="text-xs text-neutral-500 flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: accentColor }} />
+                              {p.payload.group} · {p.payload.nutrientNeed}
                             </span>
-                          ) : null}
+                            {p.payload.experienceRating ? (
+                              <span className="inline-flex items-center gap-1 font-mono-num text-[#63390C] dark:text-[#FFC814]">
+                                <Star className="w-3.5 h-3.5 fill-current" />
+                                {p.payload.experienceRating}/5
+                              </span>
+                            ) : null}
+                          </div>
+                          <h3 className="font-display text-lg font-semibold flex items-center gap-2">
+                            {p.payload.isTree && <Trees className="w-4 h-4 shrink-0" style={{ color: accentColor }} />}
+                            <span className="truncate">{p.title}</span>
+                          </h3>
+                          <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2">
+                            {p.payload.description || 'Keine Beschreibung hinterlegt.'}
+                          </p>
+                          <dl className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+                            <div>
+                              <dt className="text-neutral-500">{p.payload.isTree ? 'Blüte / Unterlage' : 'Aussaat / Vorzucht'}</dt>
+                              <dd className="font-medium truncate">
+                                {p.payload.isTree
+                                  ? `${p.payload.bloomWindow || '—'} · ${p.payload.rootstock || '—'}`
+                                  : p.payload.sowingWindow || p.payload.preCultureWindow || '—'}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-neutral-500">Ernte / Reife</dt>
+                              <dd className="font-medium truncate">{p.payload.harvestWindow || '—'}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-neutral-500">Abstand</dt>
+                              <dd className="font-medium truncate">
+                                {p.payload.plantSpacingCm || '—'} × {p.payload.rowSpacingCm || '—'}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-neutral-500">Geschmack</dt>
+                              <dd className="font-medium truncate">{p.payload.taste || p.payload.sourceRef || '—'}</dd>
+                            </div>
+                          </dl>
+
+                          {(p.payload.goodNeighbors || p.payload.badNeighbors || p.payload.careTip) && (
+                            <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 space-y-1 text-[11px]">
+                              {p.payload.goodNeighbors && (
+                                <div className="text-[#233A29] dark:text-[#BBE774]">
+                                  <strong>Gute Nachbarn:</strong> {p.payload.goodNeighbors}
+                                </div>
+                              )}
+                              {p.payload.badNeighbors && (
+                                <div className="text-[#CF6432]">
+                                  <strong>Lieber trennen von:</strong> {p.payload.badNeighbors}
+                                </div>
+                              )}
+                              {p.payload.careTip && (
+                                <div className="text-neutral-600 dark:text-neutral-300 bg-[#F7F7F5] dark:bg-[#0F1412] rounded-lg px-2.5 py-1.5">
+                                  <strong>Tipp:</strong> {p.payload.careTip}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <h3 className="font-display text-lg font-semibold flex items-center gap-2">
-                          {p.payload.isTree && <Trees className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774] shrink-0" />}
-                          <span className="truncate">{p.title}</span>
-                        </h3>
-                        <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2">
-                          {p.payload.description || 'Keine Beschreibung hinterlegt.'}
-                        </p>
-                        <dl className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
-                          <div>
-                            <dt className="text-neutral-500">{p.payload.isTree ? 'Blüte / Unterlage' : 'Aussaat / Vorzucht'}</dt>
-                            <dd className="font-medium truncate">
-                              {p.payload.isTree
-                                ? `${p.payload.bloomWindow || '—'} · ${p.payload.rootstock || '—'}`
-                                : p.payload.sowingWindow || p.payload.preCultureWindow || '—'}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-neutral-500">Ernte / Reife</dt>
-                            <dd className="font-medium truncate">{p.payload.harvestWindow || '—'}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-neutral-500">Abstand</dt>
-                            <dd className="font-medium truncate">
-                              {p.payload.plantSpacingCm || '—'} × {p.payload.rowSpacingCm || '—'}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-neutral-500">Quelle</dt>
-                            <dd className="font-medium truncate">{p.payload.sourceRef || 'Nicht angegeben'}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
-                        <button
-                          type="button"
-                          onClick={() => toggleCompare(p.id)}
-                          className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1 ${
-                            isSelected
-                              ? 'bg-[#597CD4] text-white'
-                              : 'border border-neutral-200 dark:border-neutral-700'
-                          }`}
-                        >
-                          <GitCompare className="w-3.5 h-3.5" />
-                          {isSelected ? 'Im Vergleich' : 'Vergleich'}
-                        </button>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                           <button
                             type="button"
-                            onClick={() => openEditPlant(p)}
-                            className="min-h-[36px] px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1"
+                            onClick={() => toggleCompare(p.id)}
+                            className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1 ${
+                              isSelected
+                                ? 'bg-[#597CD4] text-white'
+                                : 'border border-neutral-200 dark:border-neutral-700'
+                            }`}
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            Profil
+                            <GitCompare className="w-3.5 h-3.5" />
+                            {isSelected ? 'Im Vergleich' : 'Vergleich'}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => archiveRecord('plants', p.id, p.title)}
-                            className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-[#CF6432] hover:bg-[#CF6432]/10"
-                            aria-label="Archivieren"
-                          >
-                            <Archive className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditPlant(p)}
+                              className="min-h-[36px] px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              Profil
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => archiveRecord('plants', p.id, p.title)}
+                              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-[#CF6432] hover:bg-[#CF6432]/10"
+                              aria-label="Archivieren"
+                            >
+                              <Archive className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </article>
@@ -502,42 +708,64 @@ export const CultivationView: React.FC = () => {
       {/* TAB 2: Saisonkalender & Phänologie */}
       {tab === 'season' && (
         <div className="space-y-5">
-          <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="font-display text-lg font-semibold">
-                Phänologischer Kalender — Mellenbach-Glasbach (~500 m ü. NN)
-              </h2>
-              <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
-                Basierend auf der Phänologischen Uhr (DWD) und angepasst an Spätfröste im Thüringer Schiefergebirge.
-              </p>
+          <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="h-1.5 w-full" style={{ backgroundColor: currentMonthGuide.seasonColor }} />
+            <div className="p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-display text-lg font-semibold">
+                    Aktuell im {currentMonthGuide.monthName}: {currentMonthGuide.seasonLabel}
+                  </h2>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                    Orientiert an der Phänologischen Uhr (DWD) & angepasst an Spätfröste in Mellenbach-Glasbach (~500 m ü. NN).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={generateAnnualCalendarPlan}
+                  className="px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                >
+                  <CalendarPlus className="w-4 h-4" />
+                  Beete in Kalender übernehmen
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-[#BBE774]/20 dark:bg-[#BBE774]/10 border border-[#65A30D]/30">
+                  <div className="font-semibold text-[#233A29] dark:text-[#BBE774] mb-1">Jetzt säen & pflanzen</div>
+                  <div className="text-neutral-700 dark:text-neutral-300">{currentMonthGuide.sowingAndPlanting.join(' · ')}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-[#FFC814]/20 dark:bg-[#FFC814]/10 border border-[#D97706]/30">
+                  <div className="font-semibold text-[#7A4400] dark:text-[#FFD65A] mb-1">Jetzt ernten</div>
+                  <div className="text-neutral-700 dark:text-neutral-300">{currentMonthGuide.harvest.join(' · ')}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-[#CF6432]/12 dark:bg-[#CF6432]/15 border border-[#CF6432]/30">
+                  <div className="font-semibold text-[#8A3614] dark:text-[#F4A07B] mb-1">Pflege & Vorzucht</div>
+                  <div className="text-neutral-700 dark:text-neutral-300">{currentMonthGuide.care.join(' · ')}</div>
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={generateAnnualCalendarPlan}
-              className="px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            >
-              <CalendarPlus className="w-4 h-4" />
-              Jahresplan in Kalender erzeugen
-            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {phasePagination.pageItems.map((ph) => (
               <div
                 key={ph.id}
-                className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-2"
+                className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col"
               >
-                <div className="text-xs text-neutral-500">{ph.typicalMonths}</div>
-                <h3 className="font-display text-base font-bold">{ph.phase}</h3>
-                <div className="text-xs font-medium text-[#3B6912] dark:text-[#BBE774]">
-                  Zeigerpflanze: {ph.indicatorPlant}
+                <div className="h-1.5 w-full bg-[#65A30D]" />
+                <div className="p-4 space-y-2">
+                  <div className="text-xs text-neutral-500">{ph.typicalMonths}</div>
+                  <h3 className="font-display text-base font-bold">{ph.phase}</h3>
+                  <div className="text-xs font-medium text-[#3B6912] dark:text-[#BBE774]">
+                    Zeigerpflanze: {ph.indicatorPlant}
+                  </div>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400">{ph.thuringiaTimingNote}</p>
+                  <ul className="text-xs space-y-1 pt-2 border-t border-neutral-100 dark:border-neutral-800 list-disc list-inside text-neutral-700 dark:text-neutral-300">
+                    {ph.gardenTasks.map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
                 </div>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400">{ph.thuringiaTimingNote}</p>
-                <ul className="text-xs space-y-1 pt-2 border-t border-neutral-100 dark:border-neutral-800 list-disc list-inside text-neutral-700 dark:text-neutral-300">
-                  {ph.gardenTasks.map((t) => (
-                    <li key={t}>{t}</li>
-                  ))}
-                </ul>
               </div>
             ))}
           </div>
@@ -551,18 +779,207 @@ export const CultivationView: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: Beetplanung & Fruchtfolge */}
+      {/* TAB 3: Aktuelle Beete & Automatische Pflanzfolge */}
       {tab === 'beds' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Relaxed Quick-Entry: What's on the beds right now? */}
+          <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="h-1.5 w-full bg-gradient-to-r from-[#BBE774] via-[#FFC814] to-[#597CD4]" />
+            <form onSubmit={handleQuickBedSubmit} className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h2 className="font-display text-base font-semibold flex items-center gap-2">
+                  <Sprout className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+                  Was steht aktuell auf unseren Beeten?
+                </h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Ganz unkompliziert eintragen, was ihr gerade eingepflanzt oder gesät habt — daraus wird automatisch eine lockere Pflanzfolge für die nächsten Jahre vorgeschlagen.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Beet / Ecke</label>
+                  <select
+                    value={quickBedAreaId}
+                    onChange={(e) => setQuickBedAreaId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-xs"
+                  >
+                    <option value="">Freien Namen eingeben…</option>
+                    {activeAreas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.title}
+                      </option>
+                    ))}
+                  </select>
+                  {!quickBedAreaId && (
+                    <input
+                      type="text"
+                      value={quickBedCustomArea}
+                      onChange={(e) => setQuickBedCustomArea(e.target.value)}
+                      placeholder="z.B. Hochbeet vorne, Tomatendach"
+                      className="mt-1.5 w-full px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-1">Pflanze / Sorte</label>
+                  <select
+                    value={quickBedPlantId}
+                    onChange={(e) => setQuickBedPlantId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-xs"
+                  >
+                    <option value="">Frei eintippen oder wählen…</option>
+                    {activePlants.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.payload.species} · {p.payload.variety}
+                      </option>
+                    ))}
+                  </select>
+                  {!quickBedPlantId && (
+                    <input
+                      type="text"
+                      value={quickBedCustomPlant}
+                      onChange={(e) => setQuickBedCustomPlant(e.target.value)}
+                      placeholder="z.B. Tomaten, Erdbeeren, Salat"
+                      className="mt-1.5 w-full px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-1">Status</label>
+                  <select
+                    value={quickBedStatus}
+                    onChange={(e) => setQuickBedStatus(e.target.value as PlantingPayload['status'])}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-xs"
+                  >
+                    <option value="Gepflanzt">Gepflanzt (steht drin)</option>
+                    <option value="Ausgesät">Ausgesät</option>
+                    <option value="Erntereif">Erntereif</option>
+                    <option value="Geplant">Geplant</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-1">Jahr</label>
+                  <input
+                    type="number"
+                    value={quickBedYear}
+                    onChange={(e) => setQuickBedYear(Number(e.target.value) || new Date().getFullYear())}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs font-mono-num"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingQuickBed}
+                  className="px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 min-h-[38px] hover:opacity-90 disabled:opacity-60"
+                >
+                  <Plus className="w-4 h-4" />
+                  {savingQuickBed ? 'Speichere…' : 'Auf Beet eintragen'}
+                </button>
+              </div>
+            </form>
+          </section>
+
           {activePlantings.length === 0 ? (
             <EmptyState
-              title="Noch keine Beetbelegung geplant"
-              description="Verknüpfe Beete mit Sorten, Vorkulturen, Nachkulturen, Mischkultur-Partnern und Staffelsaaten."
-              actionLabel="Erste Pflanzung planen"
+              title="Noch keine Beetbelegung eingetragen"
+              description="Tragt oben einfach ein, was aktuell bei euch auf einem Beet steht — danach erscheint hier automatisch eure passende Pflanzfolge."
+              actionLabel="Detail-Pflanzung öffnen"
               onAction={() => setPlantingModal(true)}
             />
           ) : (
             <>
+              {/* Automatic Crop Rotation Generator */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="font-display text-base font-semibold flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#D97706]" />
+                      Automatischer Pflanzfolge-Generator
+                    </h2>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Direkt aus euren eingetragenen Beeten berechnet — ohne Druck, einfach als Orientierung für nächstes & übernächstes Jahr.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {plantingPagination.pageItems.map((pl) => {
+                    const rotation = suggestCropRotation(pl.payload.plantName, pl.payload.nutrientNeed);
+                    return (
+                      <div
+                        key={`rot-${pl.id}`}
+                        className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col"
+                      >
+                        <div className="h-1.5 w-full bg-[#16A34A]" />
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-xs text-neutral-500">
+                                {pl.payload.areaName || 'Beet'} · {rotation.detectedCategory}
+                              </div>
+                              <h3 className="font-display text-base font-semibold">
+                                {pl.payload.year}: {pl.payload.plantName}
+                                {pl.payload.variety ? ` (${pl.payload.variety})` : ''}
+                              </h3>
+                            </div>
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-[#BBE774]/25 text-[#233A29] dark:text-[#BBE774]">
+                              {pl.payload.status}
+                            </span>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412] space-y-2 text-xs">
+                            <div className="font-semibold text-[#233A29] dark:text-[#BBE774] flex items-center gap-1.5">
+                              <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                              Vorschlag für {pl.payload.year + 1}: {rotation.year2Label}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {rotation.year2Options.map((opt) => (
+                                <button
+                                  key={`${opt.plantName}-${opt.variety}`}
+                                  type="button"
+                                  onClick={() => handleReserveNextYearCrop(pl, opt)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#161D1A] border border-[#65A30D]/40 hover:bg-[#BBE774]/20 text-xs font-medium inline-flex items-center gap-1.5 transition"
+                                  title={`Als Planung für ${pl.payload.year + 1} speichern`}
+                                >
+                                  <Plus className="w-3.5 h-3.5 text-[#3B6912] dark:text-[#BBE774]" />
+                                  {opt.plantName} ({opt.variety}) vormerken
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                              <div className="font-semibold text-neutral-700 dark:text-neutral-200">
+                                {pl.payload.year + 2}: {rotation.year3Label}
+                              </div>
+                              <div className="text-neutral-500 mt-0.5">
+                                z.B. {rotation.year3Options.map((o) => o.plantName).join(', ')}
+                              </div>
+                            </div>
+                            <div className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                              <div className="font-semibold text-neutral-700 dark:text-neutral-200">
+                                {pl.payload.year + 3}: Danach
+                              </div>
+                              <div className="text-neutral-500 mt-0.5">{rotation.year4Label}</div>
+                            </div>
+                          </div>
+
+                          <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                            <strong className="text-[#CF6432]">Hinweis:</strong> {rotation.warningNote}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Classic Bed List / Table */}
               <div className="md:hidden space-y-3">
                 {plantingPagination.pageItems.map((pl) => (
                   <div
@@ -572,7 +989,7 @@ export const CultivationView: React.FC = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="font-semibold text-sm text-neutral-900 dark:text-neutral-100">
-                          {pl.payload.plantName} · {pl.payload.variety}
+                          {pl.payload.plantName} {pl.payload.variety ? `· ${pl.payload.variety}` : ''}
                         </div>
                         <div className="text-neutral-500">
                           {pl.payload.areaName} · {pl.payload.status}
@@ -628,7 +1045,7 @@ export const CultivationView: React.FC = () => {
                       <tr key={pl.id}>
                         <td className="py-3 px-4">
                           <div className="font-semibold">
-                            {pl.payload.plantName} · {pl.payload.variety}
+                            {pl.payload.plantName} {pl.payload.variety ? `· ${pl.payload.variety}` : ''}
                           </div>
                           <div className="text-xs text-neutral-500">
                             {pl.payload.nutrientNeed} · Jahr {pl.payload.year}
@@ -675,7 +1092,7 @@ export const CultivationView: React.FC = () => {
                 totalPages={plantingPagination.totalPages}
                 totalItems={plantingPagination.totalItems}
                 onPageChange={plantingPagination.setPage}
-                itemLabel="Pflanzungen"
+                itemLabel="Beeteinträge"
               />
             </>
           )}
@@ -975,6 +1392,36 @@ export const CultivationView: React.FC = () => {
                 type="text"
                 value={plantForm.processingSuitability}
                 onChange={(e) => setPlantForm({ ...plantForm, processingSuitability: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Gute Nachbarn (Mischkultur)</label>
+              <input
+                type="text"
+                value={plantForm.goodNeighbors || ''}
+                onChange={(e) => setPlantForm({ ...plantForm, goodNeighbors: e.target.value })}
+                placeholder="z.B. Basilikum, Kopfsalat, Tagetes"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Schlechte Nachbarn</label>
+              <input
+                type="text"
+                value={plantForm.badNeighbors || ''}
+                onChange={(e) => setPlantForm({ ...plantForm, badNeighbors: e.target.value })}
+                placeholder="z.B. Kartoffeln, Fenchel"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium mb-1">Lockerer Pflege- & Praxistipp</label>
+              <input
+                type="text"
+                value={plantForm.careTip || ''}
+                onChange={(e) => setPlantForm({ ...plantForm, careTip: e.target.value })}
+                placeholder="z.B. Immer an die Wurzeln gießen und leicht mulchen"
                 className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
               />
             </div>
