@@ -1,13 +1,13 @@
 # Hof & Garten — Einrichtung & Automatisches Deployment (Firebase + Netlify)
 
 ## 1. Firebase-Projekt (bereits angebunden)
-- **Projekt-ID:** `gen-lang-client-0184315958`
+- **Projekt-ID:** `hof-und-garten`
 - **Firestore-Datenbank:** `ai-studio-7c45743f-0fa5-4fa9-940e-cd80b8aa94f4`
 - **Security Rules:** `firestore.rules` (bereits bereitgestellt, Standard-Deny, E-Mail-Verifizierung, strikte Schema-Prüfung, PII-Trennung)
 
 ### Einmalige Einrichtung der beiden Konten (Nico & Chris)
 Da laut Vorgabe **kein Google-Login** und **keine öffentliche Registrierung** erlaubt sind, aktiviere in der Firebase Console einmalig die E-Mail/Passwort-Anmeldung:
-1. Öffne die [Firebase Console](https://console.firebase.google.com/project/gen-lang-client-0184315958/authentication/providers).
+1. Öffne die [Firebase Console](https://console.firebase.google.com/project/hof-und-garten/authentication/providers).
 2. Wähle **Authentication -> Sign-in method -> E-Mail/Passwort** und aktiviere den Anbieter (ohne E-Mail-Link-Option nötig).
 3. Lege unter **Authentication -> Users -> Add user** die beiden Konten für **Nico** und **Chris** mit ihren jeweiligen E-Mail-Adressen und Passwörtern an.
 4. Beim ersten Login in **Hof & Garten** erhalten Nico und Chris einmalig eine Verifizierungs-E-Mail (damit `email_verified` in Firebase aktiv ist) und wählen danach ihr Profil (`Nico` `#BBE774` oder `Chris` `#F28090`).
