@@ -4,6 +4,7 @@ import {
   Archive,
   BookOpen,
   CheckCircle2,
+  Database,
   Edit3,
   NotebookPen,
   Plus,
@@ -12,6 +13,11 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
+import {
+  buildStarterKnowledge,
+  buildStarterPlants,
+  buildStarterRecipes,
+} from '../data/botanicalCatalog';
 import { REGIONAL_SOIL_WATER_REFERENCE } from '../lib/weather';
 import {
   EmptyState,
@@ -54,6 +60,7 @@ export const KnowledgeView: React.FC = () => {
     animalGroups,
     feedStocks,
     harvests,
+    recipes,
     inventoryItems,
     projects,
     calendarEvents,
@@ -62,11 +69,28 @@ export const KnowledgeView: React.FC = () => {
     createRecord,
     updateRecord,
     archiveRecord,
+    seedReferenceDatabases,
     pushToast,
   } = useHomestead();
 
   const [tab, setTab] = useState<'fachwissen' | 'erfahrung' | 'assistent'>('fachwissen');
   const [searchTerm, setSearchTerm] = useState('');
+  const [seedingRefs, setSeedingRefs] = useState(false);
+
+  const missingRefStats = useMemo(() => {
+    const kSet = new Set(knowledgeEntries.map((k) => k.title.trim().toLowerCase()));
+    const pSet = new Set(plants.map((p) => p.title.trim().toLowerCase()));
+    const rSet = new Set(recipes.map((r) => r.title.trim().toLowerCase()));
+    const missingKnowledge = buildStarterKnowledge().filter((k) => !kSet.has(k.title.trim().toLowerCase())).length;
+    const missingPlants = buildStarterPlants().filter((p) => !pSet.has(p.title.trim().toLowerCase())).length;
+    const missingRecipes = buildStarterRecipes().filter((r) => !rSet.has(r.title.trim().toLowerCase())).length;
+    return {
+      missingKnowledge,
+      missingPlants,
+      missingRecipes,
+      totalMissing: missingKnowledge + missingPlants + missingRecipes,
+    };
+  }, [knowledgeEntries, plants, recipes]);
 
   // Knowledge CRUD modal
   const [showModal, setShowModal] = useState(false);
@@ -99,6 +123,8 @@ export const KnowledgeView: React.FC = () => {
         q
           ? k.title.toLowerCase().includes(q) ||
             k.payload.content.toLowerCase().includes(q) ||
+            k.payload.category.toLowerCase().includes(q) ||
+            (k.payload.tags || []).some((t) => t.toLowerCase().includes(q)) ||
             (k.payload.source || '').toLowerCase().includes(q)
           : true
       );
@@ -357,8 +383,38 @@ export const KnowledgeView: React.FC = () => {
       {/* A: Verified / Sourced Fachwissen */}
       {tab === 'fachwissen' && (
         <div className="space-y-4">
-          <div className="p-4 rounded-2xl bg-[#597CD4]/10 border border-[#597CD4]/30 text-xs text-neutral-800 dark:text-neutral-200">
-            <strong>Bereich A — Geprüftes Fachwissen:</strong> Jeder Eintrag enthält eine explizite Fachquelle (z.B. DWD, LWK/TLLLR Thüringen, BfR, Fachliteratur) und bleibt klar von persönlichen Hof-Erfahrungen getrennt.
+          <div className="p-4 rounded-2xl bg-[#597CD4]/10 border border-[#597CD4]/30 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-neutral-800 dark:text-neutral-200">
+            <div className="space-y-1">
+              <div>
+                <strong>Bereich A — Geprüftes Fachwissen:</strong> Jeder Eintrag enthält eine explizite Fachquelle (z.B. BfR, BZfE, TLLLR Thüringen, LWG Bayern, StIKo Vet/FLI) und bleibt klar von persönlichen Hof-Erfahrungen getrennt.
+              </div>
+              {missingRefStats.totalMissing === 0 && (
+                <div className="text-[#3B6912] dark:text-[#BBE774] font-medium inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Vollständige Fachwissen-, Sorten- und Rezept-Bibliothek in Firebase vorhanden.
+                </div>
+              )}
+            </div>
+            {missingRefStats.totalMissing > 0 && (
+              <button
+                type="button"
+                disabled={seedingRefs}
+                onClick={async () => {
+                  setSeedingRefs(true);
+                  try {
+                    await seedReferenceDatabases();
+                  } finally {
+                    setSeedingRefs(false);
+                  }
+                }}
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition whitespace-nowrap shrink-0"
+              >
+                <Database className="w-4 h-4" />
+                {seedingRefs
+                  ? 'Wird in Firebase gespeichert…'
+                  : `Fachwissen-Datenbank ergänzen (${missingRefStats.totalMissing} neu)`}
+              </button>
+            )}
           </div>
 
           {fachwissenEntries.length === 0 ? (
@@ -379,18 +435,18 @@ export const KnowledgeView: React.FC = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h3 className="font-display text-base font-bold flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-[#597CD4]" />
+                        <BookOpen className="w-4 h-4 text-[#597CD4] shrink-0" />
                         {entry.title}
                       </h3>
                       <div className="text-xs text-neutral-500 mt-0.5">
                         Fachwissen · {entry.payload.category} · <span className="font-mono-num">{entry.payload.date}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
                         onClick={() => openEdit(entry)}
-                        className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-700"
+                        className="p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700"
                         aria-label="Bearbeiten"
                       >
                         <Edit3 className="w-4 h-4" />
@@ -398,7 +454,7 @@ export const KnowledgeView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => archiveRecord('knowledgeEntries', entry.id, entry.title)}
-                        className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-[#CF6432]"
+                        className="p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-[#CF6432]"
                         aria-label="Archivieren"
                       >
                         <Archive className="w-4 h-4" />
@@ -408,8 +464,21 @@ export const KnowledgeView: React.FC = () => {
                   <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed whitespace-pre-line">
                     {entry.payload.content}
                   </p>
-                  <div className="text-xs text-neutral-600 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 pt-2">
-                    <strong>Quelle:</strong> {entry.payload.source}
+                  {entry.payload.safetyWarning && (
+                    <div className="p-3 rounded-xl bg-[#CF6432]/12 border border-[#CF6432]/35 text-xs text-[#9A3E14] dark:text-[#F49D76] flex items-start gap-2">
+                      <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{entry.payload.safetyWarning}</span>
+                    </div>
+                  )}
+                  <div className="text-xs text-neutral-600 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 pt-2 space-y-1">
+                    <div>
+                      <strong>Quelle:</strong> {entry.payload.source}
+                    </div>
+                    {entry.payload.tags && entry.payload.tags.length > 0 && (
+                      <div className="text-[11px] text-neutral-500">
+                        Stichworte: {entry.payload.tags.join(' · ')}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

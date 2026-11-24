@@ -13,6 +13,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -41,7 +42,12 @@ import {
   useOnlineStatus,
 } from '../lib/offlineSync';
 import { fetchMellenbachWeather, getCachedWeather } from '../lib/weather';
-import { buildStarterDataBundle } from '../data/botanicalCatalog';
+import {
+  buildStarterDataBundle,
+  buildStarterKnowledge,
+  buildStarterPlants,
+  buildStarterRecipes,
+} from '../data/botanicalCatalog';
 import type {
   AnimalGroupPayload,
   AnimalLogPayload,
@@ -220,6 +226,7 @@ interface HomesteadContextValue {
   restoreRecord: (collectionName: string, docId: string, title: string) => Promise<void>;
   deleteRecordPermanently: (collectionName: string, docId: string, title: string) => Promise<void>;
   initializeStarterData: () => Promise<void>;
+  seedReferenceDatabases: () => Promise<{ added: number; skipped: number }>;
   offlineQueue: OfflineMutation[];
   syncConflicts: SyncConflict[];
   resolveSyncConflict: (conflictId: string, choice: 'keep_local' | 'keep_remote') => Promise<void>;
@@ -238,15 +245,17 @@ function tsToMs(val: unknown): number {
   return Date.now();
 }
 
-function makeDocId(prefix: string): string {
+function makeDocId(prefix: string, seqIndex?: number): string {
   const rand = Math.random().toString(36).slice(2, 8);
-  return `${prefix}_${Date.now()}_${rand}`;
+  const seq = typeof seqIndex === 'number' ? `_${seqIndex}` : '';
+  return `${prefix}_${Date.now()}${seq}_${rand}`;
 }
 
 export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isOnline = useOnlineStatus();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authRevision, setAuthRevision] = useState(0);
   const [userProfile, setUserProfile] = useState<UserPrivateProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [members, setMembers] = useState<HomesteadMember[]>([]);
@@ -395,50 +404,70 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    setProfileLoading(true);
-    const userDocRef = doc(db, 'users', firebaseUser.uid);
-    const unsubProfile = onSnapshot(
-      userDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          setUserProfile(snap.data() as UserPrivateProfile);
-        } else {
-          setUserProfile(null);
-        }
-        setProfileLoading(false);
-      },
-      (err) => {
-        setProfileLoading(false);
-        handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
-      }
-    );
+    let cancelled = false;
+    let unsubProfile: (() => void) | undefined;
+    let unsubMembers: (() => void) | undefined;
 
-    const membersQuery = query(
-      collection(db, 'homesteadMembers'),
-      where('homesteadId', '==', 'mellenbach-hof')
-    );
-    const unsubMembers = onSnapshot(
-      membersQuery,
-      (snap) => {
-        const list: HomesteadMember[] = snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            ...(data as HomesteadMember),
-            lastSeenAtMs: tsToMs(data.lastSeenAt),
-          };
-        });
-        setMembers(list);
-      },
-      (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'homesteadMembers');
+    setProfileLoading(true);
+
+    const startListeners = async () => {
+      try {
+        const tokenRes = await firebaseUser.getIdTokenResult();
+        if (!tokenRes.claims.email_verified) {
+          await firebaseUser.getIdToken(true);
+        }
+      } catch {
+        // Proceed with current token if offline
       }
-    );
+      if (cancelled) return;
+
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      unsubProfile = onSnapshot(
+        userDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            setUserProfile(snap.data() as UserPrivateProfile);
+          } else {
+            setUserProfile(null);
+          }
+          setProfileLoading(false);
+        },
+        (err) => {
+          setProfileLoading(false);
+          handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+        }
+      );
+
+      const membersQuery = query(
+        collection(db, 'homesteadMembers'),
+        where('homesteadId', '==', 'mellenbach-hof')
+      );
+      unsubMembers = onSnapshot(
+        membersQuery,
+        (snap) => {
+          const list: HomesteadMember[] = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              ...(data as HomesteadMember),
+              lastSeenAtMs: tsToMs(data.lastSeenAt),
+            };
+          });
+          setMembers(list);
+        },
+        (err) => {
+          handleFirestoreError(err, OperationType.LIST, 'homesteadMembers');
+        }
+      );
+    };
+
+    void startListeners();
 
     return () => {
-      unsubProfile();
-      unsubMembers();
+      cancelled = true;
+      unsubProfile?.();
+      unsubMembers?.();
     };
-  }, [authReady, firebaseUser]);
+  }, [authReady, firebaseUser, authRevision]);
 
   const activeIdentity: UserIdentity | null = userProfile?.displayName ?? null;
   const otherIdentity: UserIdentity | null =
@@ -874,6 +903,10 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refreshAuthUser = async () => {
     if (!auth.currentUser) return false;
     await reload(auth.currentUser);
+    if (auth.currentUser.emailVerified) {
+      await auth.currentUser.getIdToken(true);
+    }
+    setAuthRevision((r) => r + 1);
     setFirebaseUser(auth.currentUser);
     return auth.currentUser.emailVerified;
   };
@@ -885,29 +918,55 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const email = firebaseUser.email || `${identity.toLowerCase()}@hof.local`;
 
     try {
+      // Ensure the JWT carries the latest email_verified claim for Firestore Rules
+      await firebaseUser.getIdToken(true);
+
+      const memberRef = doc(db, 'homesteadMembers', uid);
+      const userRef = doc(db, 'users', uid);
+      const [memberSnap, userSnap] = await Promise.all([getDoc(memberRef), getDoc(userRef)]);
+
       const batch = writeBatch(db);
-      batch.set(doc(db, 'homesteadMembers', uid), {
-        uid,
-        homesteadId: 'mellenbach-hof',
-        displayName: identity,
-        accentColor,
-        role: 'member',
-        lastSeenAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      batch.set(doc(db, 'users', uid), {
-        uid,
-        email,
-        displayName: identity,
-        accentColor,
-        role: 'member',
-        personalNotes: '',
-        themePreference: 'light',
-        notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
-        dashboardLayout: DEFAULT_DASHBOARD_LAYOUT,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (memberSnap.exists()) {
+        batch.update(memberRef, {
+          displayName: identity,
+          accentColor,
+          lastSeenAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        batch.set(memberRef, {
+          uid,
+          homesteadId: 'mellenbach-hof',
+          displayName: identity,
+          accentColor,
+          role: 'member',
+          lastSeenAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      if (userSnap.exists()) {
+        batch.update(userRef, {
+          displayName: identity,
+          accentColor,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        batch.set(userRef, {
+          uid,
+          email,
+          displayName: identity,
+          accentColor,
+          role: 'member',
+          personalNotes: '',
+          themePreference: 'light',
+          notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+          dashboardLayout: DEFAULT_DASHBOARD_LAYOUT,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
       await batch.commit();
       pushToast('success', `Willkommen, ${identity}! Dein Profil ist aktiv.`);
     } catch (err) {
@@ -1241,43 +1300,123 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     pushToast('success', choice === 'keep_local' ? 'Lokale Version übernommen.' : 'Cloud-Version beibehalten.');
   };
 
+  const commitChunkedWrites = async (
+    entries: Array<{ colName: string; title: string; payload: unknown }>
+  ) => {
+    if (!firebaseUser) return;
+    const CHUNK_SIZE = 350;
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+      const slice = entries.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      slice.forEach((item, idx) => {
+        const id = makeDocId(item.colName.slice(0, 5), i + idx);
+        batch.set(doc(db, item.colName, id), {
+          homesteadId: 'mellenbach-hof',
+          module: item.colName,
+          title: item.title.trim().slice(0, 200) || 'Eintrag',
+          archived: false,
+          payload: item.payload,
+          createdBy: firebaseUser.uid,
+          updatedBy: firebaseUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    }
+  };
+
   const initializeStarterData = async () => {
     if (!firebaseUser || !activeIdentity) return;
+    if (!navigator.onLine) {
+      pushToast('warning', 'Für die Ersteinrichtung bitte mit dem Internet verbinden.');
+      return;
+    }
     const bundle = buildStarterDataBundle(firebaseUser.uid);
+    const writes: Array<{ colName: string; title: string; payload: unknown }> = [];
+    const pushList = (colName: string, items: Array<{ title: string; payload: unknown }>) => {
+      for (const item of items) {
+        writes.push({ colName, title: item.title, payload: item.payload });
+      }
+    };
+    pushList('areas', bundle.areas);
+    pushList('plants', bundle.plants);
+    pushList('recipes', bundle.recipes);
+    pushList('animalGroups', bundle.animalGroups);
+    pushList('feedStocks', bundle.feedStocks);
+    pushList('plantings', bundle.plantings);
+    pushList('seeds', bundle.seeds);
+    pushList('resources', bundle.resources);
+    pushList('knowledgeEntries', bundle.knowledge);
+    pushList('calendarEvents', bundle.calendarEvents);
+    pushList('emergencyConfig', [bundle.emergencyConfig]);
+
     try {
-      const batch = writeBatch(db);
-      const addList = (colName: string, items: Array<{ title: string; payload: unknown }>) => {
-        for (const item of items) {
-          const id = makeDocId(colName.slice(0, 5));
-          batch.set(doc(db, colName, id), {
-            homesteadId: 'mellenbach-hof',
-            module: colName,
-            title: item.title,
-            archived: false,
-            payload: item.payload,
-            createdBy: firebaseUser.uid,
-            updatedBy: firebaseUser.uid,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
-      };
-      addList('areas', bundle.areas);
-      addList('plants', bundle.plants);
-      addList('recipes', bundle.recipes);
-      addList('animalGroups', bundle.animalGroups);
-      addList('feedStocks', bundle.feedStocks);
-      addList('plantings', bundle.plantings);
-      addList('seeds', bundle.seeds);
-      addList('resources', bundle.resources);
-      addList('knowledgeEntries', bundle.knowledge);
-      addList('calendarEvents', bundle.calendarEvents);
-      addList('emergencyConfig', [bundle.emergencyConfig]);
-      await batch.commit();
-      await writeAuditLog('seed', 'homestead', 'starter', 'Hof-Grundstruktur für Mellenbach-Glasbach eingerichtet');
-      pushToast('success', 'Hof-Grundstruktur für Mellenbach-Glasbach wurde in Firebase angelegt.');
+      await commitChunkedWrites(writes);
+      await writeAuditLog('seed', 'homestead', 'starter', 'Hof-Grundstruktur & Fachwissen für Mellenbach-Glasbach eingerichtet');
+      pushToast('success', 'Hof-Grundstruktur & Fachwissen wurden in Firebase angelegt.');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'starter-bundle');
+    }
+  };
+
+  const seedReferenceDatabases = async (): Promise<{ added: number; skipped: number }> => {
+    if (!firebaseUser || !activeIdentity) return { added: 0, skipped: 0 };
+    if (!navigator.onLine) {
+      pushToast('warning', 'Bitte online verbinden, um die Fachwissen-Datenbank in Firebase zu speichern.');
+      return { added: 0, skipped: 0 };
+    }
+
+    const existingKnowledgeTitles = new Set(knowledgeEntries.map((k) => k.title.trim().toLowerCase()));
+    const existingPlantTitles = new Set(plants.map((p) => p.title.trim().toLowerCase()));
+    const existingRecipeTitles = new Set(recipes.map((r) => r.title.trim().toLowerCase()));
+
+    const writes: Array<{ colName: string; title: string; payload: unknown }> = [];
+    let skipped = 0;
+
+    for (const item of buildStarterKnowledge()) {
+      if (existingKnowledgeTitles.has(item.title.trim().toLowerCase())) {
+        skipped += 1;
+      } else {
+        writes.push({ colName: 'knowledgeEntries', title: item.title, payload: item.payload });
+      }
+    }
+    for (const item of buildStarterPlants()) {
+      if (existingPlantTitles.has(item.title.trim().toLowerCase())) {
+        skipped += 1;
+      } else {
+        writes.push({ colName: 'plants', title: item.title, payload: item.payload });
+      }
+    }
+    for (const item of buildStarterRecipes()) {
+      if (existingRecipeTitles.has(item.title.trim().toLowerCase())) {
+        skipped += 1;
+      } else {
+        writes.push({ colName: 'recipes', title: item.title, payload: item.payload });
+      }
+    }
+
+    if (writes.length === 0) {
+      pushToast('info', 'Alle Fachwissen-, Sorten- und Rezept-Datenbanken sind bereits vollständig geladen.');
+      return { added: 0, skipped };
+    }
+
+    try {
+      await commitChunkedWrites(writes);
+      await writeAuditLog(
+        'seed',
+        'knowledgeEntries',
+        'reference-db',
+        `${writes.length} Referenz-Einträge (Fachwissen, Sorten & Rezepte) ergänzt`
+      );
+      pushToast(
+        'success',
+        `${writes.length} neue Fachwissen-, Sorten- & Rezepteinträge in Firebase gespeichert.`
+      );
+      return { added: writes.length, skipped };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'reference-databases');
+      return { added: 0, skipped };
     }
   };
 
@@ -1347,6 +1486,7 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         restoreRecord,
         deleteRecordPermanently,
         initializeStarterData,
+        seedReferenceDatabases,
         offlineQueue,
         syncConflicts,
         resolveSyncConflict,
