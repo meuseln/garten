@@ -1,0 +1,1711 @@
+# MASTER-PROMPT: HOF & GARTEN
+## Vollständige Entwicklung einer cloudbasierten Selbstversorger- und Gartenverwaltungs-App
+
+### 1. Projektauftrag
+
+Entwickle eine vollständige, moderne und responsive Web-App mit dem Namen **„Hof & Garten“**.
+
+Die Anwendung dient der gemeinsamen Planung, Verwaltung und Bewirtschaftung eines privaten Selbstversorgerhofes in Mellenbach-Glasbach, Thüringen.
+
+Die App wird von zwei Personen genutzt: Nico und Chris.
+
+Sie soll sämtliche relevanten Bereiche eines Selbstversorgerhofes miteinander verbinden:
+
+- Gemüse- und Obstanbau
+- Pflanzen- und Sortenverwaltung
+- Saison- und Aussaatplanung
+- Tierhaltung
+- Ernteverwaltung
+- Lebensmittelverarbeitung
+- Vorratshaltung
+- Ressourcenmanagement
+- Projektverwaltung
+- Kalender und Aufgaben
+- Wettervorhersage
+- Wissensdatenbank
+- Intelligenter Gartenassistent
+- Kosten- und Ertragsübersicht
+
+**Wichtig: Entwickle eine tatsächlich funktionsfähige Anwendung und keine reine Design-Demo.**
+
+Alle Bedienelemente müssen funktionieren. Daten müssen dauerhaft gespeichert werden. Alle Module müssen miteinander verknüpft sein.
+
+Es darf keine bloße Darstellung mit Beispieldaten entstehen, bei der Funktionen nur optisch vorhanden sind.
+
+---
+
+# 2. Verbindliche technische Vorgaben
+
+### Hosting und Deployment
+
+Die Anwendung soll über folgende Infrastruktur betrieben werden:
+
+**Netlify**
+- Hosting der Web-App
+- Automatische Deployments
+- Build-Prozess
+- HTTPS
+- Domainverwaltung
+- Deployment-Vorschauen
+- Anbindung an ein Git-Repository
+
+**Firebase**
+- Firebase Authentication
+- Cloud Firestore
+- Firebase Storage
+- Firebase Cloud Messaging
+- Firebase Cloud Functions, sofern für serverseitige Funktionen erforderlich
+
+Die Anwendung muss so aufgebaut werden, dass Netlify und Firebase gemeinsam funktionieren.
+
+### Automatisches Deployment
+
+Richte einen automatisierten Entwicklungs- und Deployment-Prozess ein:
+
+1. Projektstruktur vollständig erstellen.
+2. Firebase-Projekt anbinden.
+3. Datenbank und Authentifizierung konfigurieren.
+4. Netlify mit dem Projekt verbinden.
+5. Build- und Deployment-Einstellungen einrichten.
+6. Umgebungsvariablen und Zugangsdaten sicher konfigurieren.
+7. Automatisches Deployment bei Änderungen am Hauptbranch aktivieren.
+8. Deployment und grundlegende Funktionen testen.
+
+Verwende keine fest eingebauten Zugangsdaten oder geheimen API-Schlüssel im Frontend.
+
+Firebase Security Rules müssen eingerichtet werden. Die Daten der beiden Benutzer dürfen nicht öffentlich zugänglich sein.
+
+Wenn Zugangsdaten, Projekt-IDs oder Berechtigungen benötigt werden, fordere ausschließlich die notwendigen Angaben an. Erfinde keine Zugangsdaten und behaupte nicht, dass ein Deployment erfolgreich war, bevor es tatsächlich getestet wurde.
+
+**Ziel ist ein möglichst automatisierter Betrieb ohne manuelle Programmierarbeiten durch den Nutzer.**
+
+Der Nutzer möchte keine Dateien selbst programmieren oder technische Änderungen manuell im Quellcode vornehmen müssen.
+
+---
+
+# 3. Benutzerverwaltung
+
+Es gibt zwei Benutzerkonten:
+
+| Benutzer | Akzentfarbe |
+|---|---|
+| Nico | #BBE774 |
+| Chris | #F28090 |
+
+### Anmeldung
+
+- Anmeldung mit E-Mail-Adresse und Passwort.
+- Kein Google-Login.
+- Keine öffentliche Registrierung.
+- Passwort zurücksetzen.
+- Sichere Sitzungsverwaltung.
+- Abmelden.
+
+Beide Benutzer sind gleichberechtigt und können sämtliche gemeinsamen Hofdaten bearbeiten.
+
+### Gemeinsame Daten
+
+Alle relevanten Daten werden zentral in Firebase gespeichert und beiden Benutzern zur Verfügung gestellt.
+
+### Persönliche Daten
+
+Jeder Benutzer erhält:
+- Eigene Aufgabenansicht
+- Eigene Notizen
+- Persönliche Benachrichtigungseinstellungen
+- Individuelle Akzentfarbe
+- Eigene Dashboard-Einstellungen
+
+### Änderungsverlauf
+
+Wichtige Änderungen müssen dokumentiert werden:
+
+- Wer hat etwas geändert?
+- Was wurde geändert?
+- Wann wurde es geändert?
+
+Gelöschte Datensätze sollen zunächst wiederherstellbar sein.
+
+---
+
+# 4. Design und Farbsystem
+
+Verwende folgende verbindliche Farbpalette:
+
+| Farbe | Hex-Code |
+|---|---|
+| Terrakotta | #CF6432 |
+| Erdbraun | #63390C |
+| Sonnengelb | #FFC814 |
+| Hellgrün | #BBE774 |
+| Mint | #A8F0D7 |
+| Blau | #597CD4 |
+| Flieder | #C58AE1 |
+| Rosa | #F28090 |
+
+### Farbzuordnung
+
+- Nico: Hellgrün
+- Chris: Rosa
+- Wetter: Blau
+- Pflanzen und Anbau: Hellgrün
+- Boden und Ressourcen: Erdbraun
+- Ernte: Sonnengelb
+- Verarbeitung: Terrakotta
+- Wissen: Flieder
+- Wasser: Mint
+
+Die Farben dienen der Orientierung und müssen mit gut lesbaren Textfarben kombiniert werden.
+
+### Designanforderungen
+
+- Modern
+- Natürlich
+- Ländlich
+- Hochwertig
+- Übersichtlich
+- Benutzerfreundlich
+- Responsive
+- Für Smartphone, Tablet und Desktop optimiert
+
+Keine überladenen Oberflächen und keine unnötig komplizierten Eingabemasken.
+
+Verwende eine klare Navigation, verständliche Icons, übersichtliche Karten und einheitliche Bedienlogik.
+
+Ein heller und dunkler Darstellungsmodus soll optional verfügbar sein.
+
+---
+
+# 5. Hauptnavigation
+
+Die Anwendung erhält folgende Hauptbereiche:
+
+1. Dashboard
+2. Grundstück
+3. Anbau
+4. Tiere
+5. Vorräte
+6. Kalender
+7. Ressourcen
+8. Projekte
+9. Wissen
+10. Verwaltung
+
+Die Navigation muss auf Desktop und Smartphone sinnvoll funktionieren.
+
+### Obere Navigationsleiste
+
+Die obere Leiste enthält:
+
+- App-Logo und App-Name
+- Aktuellen Benutzer
+- Benutzerwechsel beziehungsweise Profilzugang
+- Benachrichtigungssymbol
+- Ping-Funktion
+- Zugriff auf Einstellungen
+
+Die Ping-Funktion muss gut sichtbar und mit einem Klick erreichbar sein.
+
+---
+
+# 6. Dashboard
+
+Das Dashboard ist die zentrale Startseite.
+
+Es zeigt die wichtigsten Informationen des gesamten Hofes.
+
+### Wetter
+
+- Aktuelle Temperatur
+- Wetterzustand
+- Regenwahrscheinlichkeit
+- Niederschlagsmenge
+- Wind
+- Tagesvorhersage
+- 7-Tage-Vorschau
+- Wetterwarnungen
+
+### Aufgaben
+
+- Heutige Aufgaben
+- Aufgaben von Nico
+- Aufgaben von Chris
+- Gemeinsame Aufgaben
+- Überfällige Aufgaben
+- Anstehende Termine
+
+### Garten
+
+- Aktive Beete
+- Aktuelle Pflanzen
+- Anstehende Aussaaten
+- Pflegeaufgaben
+- Ernteerwartungen
+
+### Tiere
+
+- Tierbestände
+- Fütterungsaufgaben
+- Reinigungsaufgaben
+- Gesundheitskontrollen
+- Eierproduktion
+- Futterbestände
+
+### Vorräte
+
+- Gesamtbestand
+- Niedrige Bestände
+- Neue Ernten
+- Zuletzt verarbeitete Lebensmittel
+- Anstehende Kontrollen
+
+### Weitere Informationen
+
+- Saisonale Empfehlungen
+- Frostwarnungen
+- Bewässerungshinweise
+- Projektfortschritte
+- Einkaufsbedarf
+
+Das Dashboard muss individuell konfigurierbar sein. Informationskarten sollen verschoben, ausgeblendet und priorisiert werden können.
+
+---
+
+# 7. Grundstücksverwaltung
+
+**WICHTIG: Es wird KEINE interaktive Gartenkarte und KEINE Satellitenkarte benötigt.**
+
+Keine Kartenintegration, keine Höhenlinien, keine Hangneigungsberechnungen und keine Hangplanung.
+
+Stattdessen erhält die Anwendung eine einfache, übersichtliche Grundstücksverwaltung.
+
+### Grundstücksbereiche
+
+Folgende Bereiche müssen angelegt und individuell erweitert werden können:
+
+- Gemüsebeete
+- Hochbeete
+- Obstgarten
+- Beerenflächen
+- Kräuterbeete
+- Gewächshaus
+- Hühnerbereich
+- Kaninchenbereich
+- Weitere Tierbereiche
+- Gebäude
+- Lagerflächen
+- Kompostplatz
+- Naturflächen
+- Blühflächen
+- Sonstige Flächen
+
+### Flächenverwaltung
+
+Jeder Bereich erhält:
+
+- Name
+- Flächentyp
+- Größe
+- Beschreibung
+- Aktuelle Nutzung
+- Bodenbeschaffenheit
+- Sonnenverhältnisse
+- Bewässerung
+- Fotos
+- Historie
+- Zugeordnete Pflanzen oder Tiere
+
+Flächen sollen als übersichtliche Kacheln und Listen dargestellt werden.
+
+Es müssen jederzeit neue Flächen und Kategorien angelegt werden können.
+
+---
+
+# 8. Wettermodul
+
+Das Wettermodul ist ein vollwertiger eigener Bereich.
+
+Standort: Mellenbach-Glasbach, Thüringen.
+
+### Aktuelles Wetter
+
+- Temperatur
+- Gefühlt-Temperatur
+- Tageshöchsttemperatur
+- Tagestiefsttemperatur
+- Luftfeuchtigkeit
+- Regenwahrscheinlichkeit
+- Niederschlagsmenge
+- Schneewahrscheinlichkeit
+- Schneemenge
+- Windgeschwindigkeit
+- Windrichtung
+- Windböen
+- UV-Index
+- Sonnenaufgang
+- Sonnenuntergang
+
+### Stündliche Vorhersage
+
+Für den aktuellen Tag:
+
+- Temperaturverlauf
+- Regenwahrscheinlichkeit
+- Niederschlagsmenge
+- Schneefall
+- Wind
+- Wetterzustand
+
+### 7-Tage-Vorhersage
+
+Für jeden Tag:
+
+- Höchsttemperatur
+- Tiefsttemperatur
+- Wetterzustand
+- Niederschlagswahrscheinlichkeit
+- Niederschlagsmenge
+- Schneevorhersage
+- Wind
+- Warnungen
+
+### Gartenwetter
+
+Die App soll Wetterdaten mit den Garteninformationen verbinden.
+
+Beispiele:
+
+- Frost: Pflanzen schützen.
+- Starkregen: Beetpflege und Entwässerung kontrollieren.
+- Trockenheit: Bewässerung prüfen.
+- Hitze: Tiertränken und Schattenplätze kontrollieren.
+- Sturm: Ställe, Gewächshaus und Zäune kontrollieren.
+- Schneefall: Zugänge und Dächer kontrollieren.
+
+Die Wetterdaten müssen regelmäßig aktualisiert werden. Veraltete Daten sind entsprechend zu kennzeichnen.
+
+---
+
+# 9. Pflanzen- und Sortendatenbank
+
+Eine umfangreiche und erweiterbare Pflanzenbibliothek ist erforderlich.
+
+Nicht nur grundlegende Pflanzenarten, sondern möglichst zahlreiche relevante Sorten müssen verwaltet werden können.
+
+### Gemüsegruppen
+
+**Fruchtgemüse**
+- Tomaten
+- Paprika
+- Chili
+- Gurken
+- Zucchini
+- Kürbis
+- Auberginen
+- Melonen
+- Mais
+
+**Wurzel- und Knollengemüse**
+- Kartoffeln
+- Süßkartoffeln
+- Möhren
+- Pastinaken
+- Petersilienwurzeln
+- Rote Bete
+- Radieschen
+- Rettich
+- Sellerie
+- Schwarzwurzeln
+- Topinambur
+
+**Kohlgemüse**
+- Weißkohl
+- Rotkohl
+- Wirsing
+- Grünkohl
+- Rosenkohl
+- Blumenkohl
+- Brokkoli
+- Kohlrabi
+- Chinakohl
+- Pak Choi
+
+**Blattgemüse**
+- Kopfsalat
+- Pflücksalat
+- Feldsalat
+- Rucola
+- Spinat
+- Mangold
+- Endivien
+- Chicorée
+
+**Hülsenfrüchte**
+- Buschbohnen
+- Stangenbohnen
+- Feuerbohnen
+- Erbsen
+- Zuckererbsen
+- Markerbsen
+- Dicke Bohnen
+
+**Zwiebelgewächse**
+- Zwiebeln
+- Schalotten
+- Frühlingszwiebeln
+- Knoblauch
+- Porree
+- Schnittknoblauch
+
+**Weitere Kulturen**
+- Fenchel
+- Spargel
+- Rhabarber
+- Artischocken
+
+### Obst und Beeren
+
+- Äpfel
+- Birnen
+- Süßkirschen
+- Sauerkirschen
+- Pflaumen
+- Zwetschgen
+- Mirabellen
+- Aprikosen
+- Pfirsiche
+- Quitten
+- Walnüsse
+- Haselnüsse
+- Erdbeeren
+- Himbeeren
+- Brombeeren
+- Johannisbeeren
+- Stachelbeeren
+- Heidelbeeren
+- Weintrauben
+- Holunder
+- Aronia
+- Sanddorn
+
+### Kräuter
+
+- Petersilie
+- Schnittlauch
+- Dill
+- Basilikum
+- Thymian
+- Rosmarin
+- Salbei
+- Oregano
+- Majoran
+- Liebstöckel
+- Zitronenmelisse
+- Minze
+- Estragon
+- Koriander
+- Kerbel
+- Bohnenkraut
+- Lavendel
+- Ysop
+- Borretsch
+- Kamille
+- Ringelblume
+
+### Sortenprofile
+
+Jede Sorte soll folgende Angaben ermöglichen:
+
+- Name
+- Pflanzenart
+- Beschreibung
+- Herkunft
+- Reifezeit
+- Aussaat
+- Vorzucht
+- Pflanzzeit
+- Erntezeit
+- Pflanzabstände
+- Reihenabstände
+- Lichtbedarf
+- Wasserbedarf
+- Nährstoffbedarf
+- Bodenanforderungen
+- Winterhärte
+- Krankheitsanfälligkeit
+- Ertragspotenzial
+- Lagerfähigkeit
+- Geschmack
+- Verwendungszweck
+- Verarbeitungseignung
+- Saatgutquelle
+- Bilder
+- Fachquellen
+
+Unbekannte Angaben dürfen nicht erfunden werden.
+
+### Sortenvergleich
+
+Mehrere Sorten müssen nebeneinander vergleichbar sein.
+
+### Eigene Anbauerfahrungen
+
+Für jede Sorte können persönliche Erfahrungen hinterlegt werden:
+
+- Ertrag
+- Geschmack
+- Pflegeaufwand
+- Krankheitsanfälligkeit
+- Wetterverträglichkeit
+- Verarbeitungsergebnis
+- Eigene Bewertung
+
+---
+
+# 10. Saisonkalender und Anbauplanung
+
+Ein vollständiger Jahreskalender von Januar bis Dezember.
+
+### Kalenderinhalte
+
+- Vorzucht
+- Aussaat
+- Direktsaat
+- Pflanzung
+- Pflege
+- Düngung
+- Schnitt
+- Ernte
+- Lagerung
+- Wintervorbereitung
+
+### Phänologischer Kalender
+
+Regionale Pflanzenentwicklung soll zusätzlich berücksichtigt werden.
+
+Die Planung orientiert sich an:
+
+- Standort Mellenbach-Glasbach
+- Regionalen Entwicklungsphasen
+- Wetter
+- Temperatur
+- Frostgefahr
+- Pflanzenart
+- Sorte
+
+### Beetplanung
+
+- Beetbelegung
+- Fruchtfolge
+- Mischkultur
+- Nährstoffbedarf
+- Vorkulturen
+- Nachkulturen
+- Staffel- und Nachsaat
+- Regenerationszeiten
+
+Die App soll automatisch einen Jahresplan mit Aufgaben und Terminen erstellen können.
+
+---
+
+# 11. Tierhaltung
+
+Die Tierverwaltung soll standardmäßig mit Tiergruppen und Beständen arbeiten.
+
+Keine unnötige Einzelakte für jedes Kaninchen oder Huhn.
+
+Einzelakten sind optional.
+
+### Unterstützte Tierarten
+
+Von Anfang an:
+
+- Hühner
+- Kaninchen
+
+Später erweiterbar:
+
+- Ziegen
+- Schafe
+- Schweine
+- Rinder
+- Enten
+- Gänse
+- Wachteln
+- Weitere Geflügelarten
+
+### Bestandsverwaltung
+
+- Tierart
+- Rasse
+- Anzahl
+- Geschlechterverteilung
+- Altersgruppen
+- Zugänge
+- Abgänge
+- Nachwuchs
+- Zuchtgruppen
+- Haltungssystem
+- Stall oder Gehege
+- Fotos
+- Notizen
+
+### Versorgung
+
+- Fütterungspläne
+- Futterarten
+- Futterverbrauch
+- Trinkwasser
+- Stallreinigung
+- Gehegereinigung
+- Einstreu
+- Parasitenkontrolle
+- Gesundheitskontrollen
+- Tierarzttermine
+- Impfungen
+- Behandlungen
+
+### Produktion
+
+- Eierproduktion
+- Milchproduktion bei entsprechenden Tierarten
+- Nachwuchs
+- Gewichtsentwicklung
+- Weitere Erzeugnisse
+
+### Futterverwaltung
+
+- Futterarten
+- Hersteller
+- Bezugsquellen
+- Einkaufsmengen
+- Lagerbestände
+- Verbrauch
+- Mindestbestand
+- Kosten
+- Voraussichtliche Reichweite
+
+### Gesundheitsdokumentation
+
+- Auffälligkeiten
+- Symptome
+- Behandlungen
+- Tierarztbesuche
+- Medikamente
+- Impfungen
+- Verlauf
+- Fotos
+
+Die Anwendung dient der Dokumentation und Erinnerung, nicht der eigenständigen Diagnose.
+
+---
+
+# 12. Ernteverwaltung
+
+Jede Ernte erhält einen eigenen Datensatz.
+
+Informationen:
+
+- Pflanze
+- Sorte
+- Beet
+- Erntedatum
+- Erntemenge
+- Einheit
+- Qualität
+- Verwendung
+- Fotos
+- Notizen
+
+### Verwendung
+
+Erntemengen können aufgeteilt werden auf:
+
+- Frischverbrauch
+- Einkochen
+- Einfrieren
+- Fermentieren
+- Trocknen
+- Entsaften
+- Marmeladen und Gelees
+- Lagerung
+- Geeignetes Tierfutter
+- Verschenken
+
+### Auswertungen
+
+- Ernte pro Pflanze
+- Ernte pro Sorte
+- Ernte pro Beet
+- Ernte pro Quadratmeter
+- Ernte pro Monat
+- Ernte pro Jahr
+- Jahresvergleiche
+
+---
+
+# 13. Lebensmittelverarbeitung und Vorratskammer
+
+Ein umfangreiches Modul mit folgenden Kategorien:
+
+1. Einkochen
+2. Einfrieren
+3. Fermentieren
+4. Trocknen
+5. Lagerung
+6. Entsaften
+7. Marmeladen und Gelees
+8. Sonstige verarbeitete Lebensmittel
+
+### Chargenverwaltung
+
+Jede Verarbeitung erhält eine eigene Chargennummer.
+
+Informationen:
+
+- Chargenbezeichnung
+- Produkt
+- Rezept
+- Herstellungsdatum
+- Ausgangsrohware
+- Zutaten
+- Mengen
+- Verarbeitungsverfahren
+- Ergebnis
+- Anzahl Einheiten
+- Glas- oder Verpackungsgröße
+- Lagerort
+- Kosten
+- Qualitätskontrolle
+- Fotos
+- Notizen
+
+### Vorratsverwaltung
+
+Lagerorte:
+
+- Vorratsraum
+- Keller
+- Gefrierschrank
+- Kühlschrank
+- Regal
+- Schrank
+- Speisekammer
+- Weitere Lagerorte
+
+Jeder Vorrat erhält:
+
+- Produktname
+- Kategorie
+- Menge
+- Einheit
+- Herstellungsdatum
+- Lagerdatum
+- Lagerort
+- Herkunft
+- Charge
+- Qualitätsstatus
+- Entnahmen
+
+### Rezepte
+
+Die Rezeptdatenbank muss enthalten:
+
+- Rezeptname
+- Kategorie
+- Zutaten
+- Mengen
+- Zubereitung
+- Geräte
+- Verarbeitungsverfahren
+- Ertrag
+- Lagerung
+- Verknüpfte Pflanzen und Ernten
+
+Rezepte müssen skalierbar sein.
+
+### Automatische Rezeptvorschläge
+
+Beispiel:
+
+Bei 4,5 kg verfügbaren Johannisbeeren schlägt die App passende Rezepte vor und berechnet die benötigten Zutatenmengen.
+
+### Lebensmittelsicherheit
+
+- Geprüfte Verarbeitungsverfahren priorisieren.
+- Keine erfundenen Einkochzeiten.
+- Keine pauschalen Haltbarkeitsversprechen.
+- Säuregehalt berücksichtigen.
+- Geeignete Temperaturen und Verfahren dokumentieren.
+- Hygiene und Qualitätskontrollen berücksichtigen.
+
+### QR-Etiketten
+
+Für jede Charge können QR-Etiketten erzeugt werden.
+
+Beim Scannen öffnet sich die zugehörige Chargenakte.
+
+---
+
+# 14. Saatgutverwaltung
+
+Eigenständige Datenbank für gekauftes und selbst gewonnenes Saatgut.
+
+- Sorte
+- Hersteller
+- Bezugsquelle
+- Kaufdatum
+- Menge
+- Lagerort
+- Haltbarkeit
+- Keimfähigkeit
+- Keimtests
+- Eigengewinnung
+- Erntejahr
+- Vermehrung
+- Nachbestellung
+
+Eigenes Saatgut erhält zusätzlich Angaben zu Mutterpflanze, Gewinnung, Trocknung und Lagerung.
+
+Der Saatgutbestand soll mit dem geplanten Anbau abgeglichen werden.
+
+---
+
+# 15. Ressourcenmanagement
+
+### Boden
+
+- Bodenproben
+- Bodenart
+- pH-Wert
+- Nährstoffwerte
+- Humus
+- Bodenstruktur
+- Bodenfeuchtigkeit
+- Entwicklung
+
+### Kompost
+
+- Kompostanlagen
+- Ausgangsmaterialien
+- Mengen
+- Befüllungsdatum
+- Umsetzen
+- Feuchtigkeit
+- Temperatur
+- Reifegrad
+- Verwendung
+
+### Wasser
+
+- Regentonnen
+- Zisternen
+- Dachflächen
+- Regenwassersammlung
+- Bewässerungsanlagen
+- Verbrauch
+- Wasserstände
+- Kapazitäten
+
+### Dünger und Mulch
+
+- Düngerarten
+- Herkunft
+- Menge
+- Verwendung
+- Flächenzuordnung
+- Mulchmaterial
+- Ausbringungsdatum
+
+### Kreislaufwirtschaft
+
+Tiermist, Kompost, Pflanzenreste, Wasser und andere Ressourcen müssen miteinander verknüpft werden können.
+
+---
+
+# 16. Projekt- und Bauverwaltung
+
+Verwaltung von:
+
+- Hühnerstall
+- Kaninchengehege
+- Gewächshaus
+- Hochbeeten
+- Zäunen
+- Wegen
+- Wasseranlagen
+- Geräteschuppen
+- Lagerflächen
+- Obstbaumpflanzungen
+- Bewässerungssystemen
+- Sonstigen Hofprojekten
+
+### Projektakte
+
+- Projektname
+- Beschreibung
+- Status
+- Priorität
+- Startdatum
+- Zieltermin
+- Verantwortlichkeit
+- Kostenplanung
+- Materialliste
+- Werkzeugliste
+- Arbeitsschritte
+- Fotos
+- Dokumente
+- Fortschritt
+- Abschlussbericht
+
+### Projektstatus
+
+- Idee
+- Geplant
+- Vorbereitet
+- In Arbeit
+- Pausiert
+- Abgeschlossen
+- Zurückgestellt
+
+---
+
+# 17. Kalender und Terminverwaltung
+
+Der Kalender ist ein vollwertiges eigenständiges Modul.
+
+Er vereint sämtliche Termine der Anwendung.
+
+### Kalenderarten
+
+- Allgemeine Termine
+- Gartentermine
+- Aussaat
+- Pflanzung
+- Pflege
+- Ernte
+- Tierpflege
+- Fütterung
+- Reinigung
+- Tierarzt
+- Verarbeitung
+- Vorratskontrolle
+- Projekte
+- Wartung
+- Saisonale Aufgaben
+
+### Ansichten
+
+- Tagesansicht
+- Wochenansicht
+- Monatsansicht
+- Jahresübersicht
+- Aufgabenliste
+
+### Termine erstellen
+
+Jeder Termin erhält:
+
+- Titel
+- Beschreibung
+- Datum
+- Startzeit
+- Endzeit
+- Kategorie
+- Zuständigkeit
+- Wiederholung
+- Erinnerung
+- Verknüpfung zu einem Hofbereich
+- Notizen
+
+### Kalenderexport für iPhone
+
+Eine zentrale Anforderung:
+
+Termine müssen direkt in den Kalender des iPhones übernommen werden können.
+
+Dafür:
+
+- Einzelne Termine als `.ics` exportieren.
+- Mehrere Termine beziehungsweise ausgewählte Kalenderbereiche exportieren.
+- Wiederkehrende Termine korrekt abbilden.
+- Erinnerungen soweit vom Zielformat unterstützt übernehmen.
+- Auf dem iPhone eine einfache Funktion „Zum Kalender hinzufügen“ bereitstellen.
+- Exportierte Termine müssen auch in Apple Kalender importierbar sein.
+
+Die Funktion muss ohne Google-Konto funktionieren.
+
+Der Export darf keine bloße Textdatei sein, sondern muss ein gültiges iCalendar-Format verwenden.
+
+Eine spätere Synchronisierung zwischen Hof & Garten und Apple Kalender kann als zusätzliche Erweiterung vorgesehen werden. Ein einfacher ICS-Export darf nicht fälschlich als bidirektionale Synchronisierung dargestellt werden.
+
+### Kalenderfarben
+
+- Nico: Hellgrün
+- Chris: Rosa
+- Gemeinsame Termine: neutrale beziehungsweise gemeinsame Farbe
+
+---
+
+# 18. Ping-Funktion für Nico und Chris
+
+Eine besonders wichtige Kommunikationsfunktion.
+
+**In der oberen Navigationsleiste wird ein dauerhaft erreichbarer Ping-Button integriert.**
+
+### Funktion
+
+Nico kann Chris mit einem Klick anpingen.
+
+Chris kann Nico mit einem Klick anpingen.
+
+### Verhalten
+
+1. Benutzer klickt auf das Ping-Symbol.
+2. Die App ermittelt den jeweils anderen Benutzer.
+3. Eine Push-Benachrichtigung wird versendet.
+4. Der Empfänger erhält beispielsweise die Nachricht:
+
+   „Nico pingt dich! Schau kurz in Hof & Garten vorbei.“
+
+5. Beim Anklicken der Benachrichtigung wird die App geöffnet.
+
+### Anforderungen
+
+- Ping mit einem Klick.
+- Keine umständliche Nachrichteneingabe.
+- Push-Benachrichtigung.
+- Sichtbare Bestätigung des Ping-Versands.
+- Anzeige des letzten Pings.
+- Optionaler kurzer Status, ob der andere Benutzer die App gerade geöffnet hat.
+- Schutz vor unbeabsichtigtem Spam.
+- Kurze Cooldown-Zeit gegen mehrfaches versehentliches Senden.
+- Nur zwischen Nico und Chris.
+
+Optional soll später eine kleine Nachrichtenfunktion ergänzt werden können.
+
+---
+
+# 19. Push-Benachrichtigungssystem
+
+Push-Benachrichtigungen sind ein zentraler Bestandteil der Anwendung.
+
+Die Benutzer sollen selbst entscheiden können, welche Benachrichtigungen sie erhalten.
+
+Technische Grundlage: Firebase Cloud Messaging.
+
+Die Web-App soll als installierbare PWA funktionieren.
+
+Für iPhones muss berücksichtigt werden, dass Web-Push-Benachrichtigungen eine Installation der Web-App auf dem Home-Bildschirm und eine entsprechende Berechtigung voraussetzen können.
+
+### Benachrichtigungskategorien
+
+**Allgemein**
+- Neue gemeinsame Aufgaben
+- Aufgabenänderungen
+- Neue Kommentare
+- Ping durch den anderen Benutzer
+
+**Kalender**
+- Bevorstehende Termine
+- Terminänderungen
+- Erinnerungen
+- Überfällige Termine
+
+**Wetter**
+- Frostwarnung
+- Starkregen
+- Sturm
+- Gewitter
+- Hitze
+- Schnee
+- Längere Trockenheit
+
+**Garten**
+- Aussaattermine
+- Pflanztermine
+- Pflegeaufgaben
+- Erntefenster
+- Bewässerungshinweise
+
+**Tiere**
+- Fütterung
+- Wasser
+- Reinigung
+- Gesundheitskontrollen
+- Tierarzttermine
+- Niedrige Futterbestände
+
+**Vorräte**
+- Niedrige Bestände
+- Qualitätskontrollen
+- Lagerkontrollen
+- Verarbeitungsaufgaben
+
+**Projekte**
+- Neue Aufgaben
+- Fällige Termine
+- Projektfortschritt
+- Materialbedarf
+
+### Individuelle Einstellungen
+
+Jeder Benutzer kann jede Kategorie einzeln aktivieren oder deaktivieren.
+
+Zusätzlich:
+
+- Sofortbenachrichtigungen
+- Tägliche Zusammenfassung
+- Ruhezeiten
+- Prioritätsstufen
+- Benachrichtigungston, soweit vom Gerät unterstützt
+- Browser- beziehungsweise Geräteberechtigungen
+- Eigene Benachrichtigungseinstellungen für Nico und Chris
+
+Wichtige Sicherheits- und Notfallhinweise dürfen nicht durch gewöhnliche Informationsmeldungen verdrängt werden.
+
+Die Anwendung muss die tatsächliche Zustellung und Berechtigung berücksichtigen und darf keine erfolgreiche Push-Zustellung behaupten, wenn diese nicht bestätigt wurde.
+
+---
+
+# 20. Wissensdatenbank und intelligenter Gartenassistent
+
+Die Wissensdatenbank besteht aus zwei getrennten Bereichen.
+
+### A. Fachwissen
+
+Mit nachvollziehbaren Quellen:
+
+- Pflanzenwissen
+- Sortenwissen
+- Anbauanleitungen
+- Mischkultur
+- Fruchtfolge
+- Pflanzenkrankheiten
+- Schädlingsbekämpfung
+- Tierhaltung
+- Tierfütterung
+- Tiergesundheit
+- Lebensmittelverarbeitung
+- Einkochen
+- Fermentation
+- Trocknung
+- Lagerung
+- Kompostierung
+- Bodenpflege
+- Bewässerung
+- Werkzeugkunde
+- Gartenbau
+
+### B. Eigenes Erfahrungswissen
+
+- Gartentagebuch
+- Fotos
+- Eigene Beobachtungen
+- Ernteerfahrungen
+- Sortenbewertungen
+- Eigene Rezepte
+- Eigene Anleitungen
+- Probleme und Lösungen
+- Erkenntnisse aus vergangenen Jahren
+
+Beide Wissensbereiche müssen eindeutig unterscheidbar sein.
+
+### KI-Assistent
+
+Der Assistent soll auf die vorhandenen Hofdaten zugreifen können.
+
+Beispielfragen:
+
+- Was sollte ich diese Woche im Garten machen?
+- Welche Pflanzen kann ich aktuell aussäen?
+- Welche Sorten sind für unseren Standort geeignet?
+- Welche Beete kann ich nächstes Jahr neu bepflanzen?
+- Was kann ich aus unseren aktuellen Vorräten kochen?
+- Wie lange reichen unsere Futtervorräte?
+- Was müssen wir vor dem Winter erledigen?
+- Welche Pflanzen vertragen sich?
+- Welche Sorten waren letztes Jahr besonders erfolgreich?
+
+### Assistentenaktionen
+
+Nach ausdrücklicher Bestätigung darf der Assistent:
+
+- Aufgaben erstellen
+- Kalendertermine vorbereiten
+- Vorräte aktualisieren
+- Ernten dokumentieren
+- Einkaufslisten erstellen
+- Projektvorschläge anlegen
+- Anbaupläne vorbereiten
+
+### Qualitätsanforderungen
+
+Antworten müssen unterscheiden zwischen:
+
+- Gesichertem Fachwissen
+- Quellenbasierter Empfehlung
+- Standortbezogener Empfehlung
+- Eigener Erfahrung
+- Schätzung
+- Unzureichender Datenlage
+
+Keine erfundenen Quellen, keine falschen Fachinformationen und keine gefährlichen Empfehlungen zur Lebensmittelkonservierung oder Tiergesundheit.
+
+---
+
+# 21. Obstbaum- und Gehölzverwaltung
+
+Eigener Bereich für:
+
+- Äpfel
+- Birnen
+- Kirschen
+- Pflaumen
+- Zwetschgen
+- Mirabellen
+- Quitten
+- Aprikosen
+- Pfirsiche
+- Walnüsse
+- Haselnüsse
+- Beerensträucher
+- Hecken
+- Weitere Gehölze
+
+Jeder Baum erhält eine eigene Akte:
+
+- Sorte
+- Baumart
+- Unterlage
+- Pflanzdatum
+- Standort
+- Pflanzabstand
+- Wuchsform
+- Kronendurchmesser
+- Befruchtungspartner
+- Blütezeit
+- Reifezeit
+- Ertrag
+- Schnittmaßnahmen
+- Krankheiten
+- Schädlingsbefall
+- Düngung
+- Winterschutz
+- Fotos
+- Historie
+
+---
+
+# 22. Natur und Biodiversität
+
+Eigenständiger Bereich für:
+
+- Vogelbeobachtungen
+- Insekten
+- Igel
+- Amphibien
+- Wildtiere
+- Nützlinge
+- Schädlinge
+- Blühflächen
+- Nistkästen
+- Insektenhotels
+- Naturflächen
+
+Beobachtungen müssen mit Datum, Foto und Notizen gespeichert werden können.
+
+---
+
+# 23. Pilz- und Wildkräutermodul
+
+Wissensbereich für:
+
+- Essbare Wildkräuter
+- Heilpflanzen
+- Wildobst
+- Pilze
+- Sammelzeiten
+- Fundorte
+- Verwendung
+- Verarbeitung
+- Eigene Beobachtungen
+
+Wichtige Sicherheitsregel:
+
+KI-Bilderkennung oder automatische Bestimmung darf niemals als sichere Verzehrfreigabe gelten.
+
+---
+
+# 24. Werkzeug- und Inventarverwaltung
+
+Verwaltung von:
+
+- Gartengeräten
+- Maschinen
+- Werkzeugen
+- Bewässerungstechnik
+- Tierhaltungsausstattung
+- Verarbeitungsgeräten
+- Konservierungsgeräten
+- Lagertechnik
+
+Jedes Inventarobjekt erhält:
+
+- Bezeichnung
+- Hersteller
+- Anschaffungsdatum
+- Kaufpreis
+- Standort
+- Wartungsintervalle
+- Reparaturen
+- Ersatzteile
+- Bedienungsanleitung
+- Fotos
+
+Automatische Wartungserinnerungen sind vorzusehen.
+
+---
+
+# 25. Kosten- und Wirtschaftlichkeitsverwaltung
+
+Zentrale Verwaltung aller Kosten und Erträge.
+
+### Ausgaben
+
+- Saatgut
+- Pflanzen
+- Dünger
+- Futter
+- Tierarzt
+- Werkzeuge
+- Baumaterial
+- Wasser
+- Strom
+- Verarbeitung
+- Verpackungsmaterial
+- Reparaturen
+
+### Erträge
+
+- Gemüse
+- Obst
+- Eier
+- Weitere tierische Produkte
+- Verarbeitete Lebensmittel
+
+### Auswertungen
+
+- Gesamtkosten pro Jahr
+- Kosten pro Modul
+- Kosten pro Beet
+- Kosten pro Tiergruppe
+- Produktionskosten pro Glas
+- Ertrag pro Quadratmeter
+- Vorratsentwicklung
+- Selbstversorgungsquote
+- Verbrauch
+- Zukaufbedarf
+
+Die Selbstversorgungsquote muss auf tatsächlichem Bedarf und tatsächlichem Verbrauch beruhen, nicht ausschließlich auf produzierten Mengen.
+
+---
+
+# 26. Dokumenten- und Einkaufsverwaltung
+
+### Dokumentenverwaltung
+
+- Rechnungen
+- Baupläne
+- Bedienungsanleitungen
+- Tierunterlagen
+- Rezepte
+- Bodenanalysen
+- Pflanzpläne
+- Grundstücksdokumente
+- Fotos
+- Weitere Dateien
+
+Dokumente müssen mit passenden Modulen verknüpft werden können.
+
+### Einkaufsverwaltung
+
+- Gemeinsame Einkaufsliste
+- Saatgutbedarf
+- Futterbedarf
+- Baumaterial
+- Verbrauchsmaterial
+- Vorratsartikel
+- Bezugsquellen
+- Preise
+- Einkaufsstatus
+
+Die App soll Einkaufslisten aus Beständen und geplanten Projekten generieren können.
+
+---
+
+# 27. Urlaubs- und Notfallmodus
+
+### Urlaubsmodus
+
+Erstellung eines Vertretungsplans mit:
+
+- Tierfütterung
+- Wasser
+- Stallpflege
+- Pflanzenpflege
+- Ernte
+- Notfallkontakte
+- Vertretungspersonen
+- Kurzanleitungen
+
+### Notfallbereich
+
+- Tierarztkontakte
+- Tierärztlicher Notdienst
+- Wichtige Ansprechpartner
+- Stromausfall
+- Wasserausfall
+- Unwetter
+- Tiernotfälle
+- Technische Notfälle
+
+Die wichtigsten Informationen müssen auch offline verfügbar sein.
+
+---
+
+# 28. Jahresberichte und Statistiken
+
+Am Ende eines Gartenjahres wird automatisch ein Jahresbericht erstellt.
+
+Inhalte:
+
+- Angebaute Pflanzen
+- Erfolgreiche Sorten
+- Erntemengen
+- Verarbeitung
+- Vorräte
+- Tierbestände
+- Eierproduktion
+- Ausgaben
+- Erträge
+- Abgeschlossene Projekte
+- Besondere Ereignisse
+- Eigene Erfahrungen
+- Verbesserungsvorschläge für das nächste Jahr
+
+Jahresvergleiche müssen möglich sein.
+
+---
+
+# 29. Datenbankarchitektur
+
+Alle Module müssen auf einer gemeinsamen, logisch strukturierten Firebase-Datenbasis arbeiten.
+
+Folgende Datenbereiche müssen eigenständig verwaltet und miteinander verknüpft werden:
+
+- Benutzer
+- Grundstücksbereiche
+- Pflanzen
+- Sorten
+- Beete
+- Pflanzungen
+- Saatgut
+- Tiergruppen
+- Tierbestände
+- Gesundheitsdaten
+- Ressourcen
+- Ernten
+- Rezepte
+- Verarbeitungschargen
+- Vorräte
+- Lagerorte
+- Projekte
+- Kalendertermine
+- Aufgaben
+- Benachrichtigungen
+- Fachwissen
+- Quellen
+- Eigene Erfahrungen
+- Inventar
+- Kosten
+- Erträge
+- Dokumente
+
+### Datenverknüpfung
+
+Beispiel:
+
+Pflanze → Sorte → Beet → Aussaat → Pflege → Ernte → Verarbeitung → Charge → Vorrat → Verbrauch.
+
+Alle Schritte müssen nachvollziehbar miteinander verbunden sein.
+
+Daten dürfen nicht unnötig doppelt gespeichert werden.
+
+---
+
+# 30. Offline-Funktionalität
+
+Die Anwendung soll als installierbare PWA umgesetzt werden.
+
+Wichtige Daten werden lokal zwischengespeichert.
+
+Offline verfügbar:
+
+- Letzte Wetterdaten
+- Aufgaben
+- Tierbestände
+- Notfallinformationen
+- Häufig verwendete Pflanzeninformationen
+- Zuletzt geladene Bereiche
+
+Offline erstellte Änderungen müssen nach Wiederherstellung der Internetverbindung synchronisiert werden.
+
+Konflikte bei gleichzeitigen Änderungen müssen erkannt und nachvollziehbar behandelt werden.
+
+---
+
+# 31. Datenschutz und Datensicherheit
+
+- Sichere Authentifizierung
+- Verschlüsselte Datenübertragung
+- Firebase Security Rules
+- Geschützte Dateispeicherung
+- Regelmäßige Backups
+- Wiederherstellungsverfahren
+- Sitzungsverwaltung
+- Änderungsprotokoll
+- Datenexport
+- Möglichkeit zur Kontolöschung
+
+Beide Benutzer dürfen nur auf die Daten des gemeinsamen Hofes zugreifen, für den sie berechtigt sind.
+
+---
+
+# 32. Exportmöglichkeiten
+
+Die App muss folgende Exporte ermöglichen:
+
+- Excel
+- CSV
+- PDF
+- ICS für Kalender
+- Bilder
+- Dokumente
+- Vollständiger Datenexport
+
+Beim vollständigen Datenexport müssen die Verknüpfungen zwischen den Datensätzen nachvollziehbar bleiben.
+
+---
+
+# 33. Qualitätssicherung und Abnahmekriterien
+
+Vor Abschluss der Entwicklung müssen alle wichtigen Funktionen getestet werden.
+
+Insbesondere:
+
+- Anmeldung von Nico und Chris
+- Gemeinsame Datenhaltung
+- Benutzerfarben
+- Dashboard
+- Wetterintegration
+- Pflanzenverwaltung
+- Sortenverwaltung
+- Saisonkalender
+- Tierbestände
+- Ernteverwaltung
+- Verarbeitungschargen
+- Vorratsverwaltung
+- QR-Etiketten
+- Kalender
+- iPhone-ICS-Export
+- Ping-Funktion
+- Push-Benachrichtigungen
+- Individuelle Benachrichtigungseinstellungen
+- Wissensdatenbank
+- KI-Assistent
+- Projekte
+- Ressourcen
+- Kostenverwaltung
+- Datenexport
+- Offline-Synchronisierung
+- Firebase-Sicherheit
+- Netlify-Deployment
+
+Keine funktionslosen Schaltflächen, keine Platzhalterfunktionen und keine ausschließlich optischen Demo-Elemente.
+
+---
+
+# 34. Entwicklungsstrategie
+
+Der gesamte Funktionsumfang ist verbindlich vorgesehen.
+
+Die technische Entwicklung soll modular erfolgen, aber die Architektur muss von Anfang an alle Module berücksichtigen.
+
+Empfohlene Reihenfolge:
+
+1. Fundament, Benutzerverwaltung und Firebase
+2. Design und Navigation
+3. Dashboard und Kalender
+4. Grundstücks- und Flächenverwaltung
+5. Pflanzen- und Sortendatenbank
+6. Saisonkalender und Anbauplanung
+7. Tierhaltung
+8. Ernte und Verarbeitung
+9. Vorräte und Saatgut
+10. Ressourcen und Projekte
+11. Push-Benachrichtigungen und Ping
+12. Wissensdatenbank und KI-Assistent
+13. Kosten, Statistiken und Jahresberichte
+14. Offline-Funktionalität
+15. Qualitätssicherung und Deployment
+
+Es darf nicht durch eine frühe Vereinfachung der Architektur unmöglich werden, spätere Module hinzuzufügen.
+
+---
+
+# 35. Verbindliche Arbeitsweise des Entwicklungssystems
+
+Arbeite selbstständig und strukturiert.
+
+**Der Nutzer möchte keine Programmierarbeit übernehmen.**
+
+Daher gelten folgende Regeln:
+
+1. Entwickle die vollständige Anwendung selbstständig.
+2. Erstelle alle notwendigen Projektdateien.
+3. Richte die Datenbankstruktur ein.
+4. Implementiere alle Module.
+5. Richte die Firebase-Anbindung ein.
+6. Konfiguriere Netlify.
+7. Richte automatisierte Deployments ein.
+8. Teste die Funktionen.
+9. Behebe erkannte Fehler.
+10. Dokumentiere die Einrichtung.
+11. Erkläre ausschließlich die tatsächlich noch notwendigen manuellen Schritte.
+
+Arbeite nicht nur an der Startseite und beende die Arbeit nicht mit einer optischen Vorschau.
+
+Erstelle eine vollständige Anwendung mit funktionierender Navigation, Datenhaltung, Verknüpfungen und Benutzerinteraktionen.
+
+Wenn eine externe Integration Zugangsdaten oder eine Freigabe erfordert, frage gezielt danach, anstatt eine nicht funktionierende Platzhalterintegration zu hinterlassen.
+
+Verwende keine erfundenen Wetterdaten, keine fingierten Fachquellen und keine vorgetäuschten Deployment-Erfolge.
+
+---
+
+# 36. Endgültige Produktdefinition
+
+**Hof & Garten** ist ein gemeinsames, cloudbasiertes Managementsystem für einen privaten Selbstversorgerhof.
+
+Es verbindet Gartenbau, Obstbau, Tierhaltung, Ernte, Lebensmittelverarbeitung, Vorratshaltung, Ressourcen, Projekte, Kalender und Fachwissen in einer einzigen Anwendung.
+
+Die beiden Benutzer Nico und Chris arbeiten gleichberechtigt mit eigenen Akzentfarben, individuellen Aufgaben und persönlichen Push-Benachrichtigungen.
+
+Eine besondere Funktion ist der direkte Ping zwischen beiden Benutzern über die obere Navigationsleiste.
+
+Termine können in den Apple-Kalender exportiert werden.
+
+Die Anwendung wird über Netlify bereitgestellt und verwendet Firebase für Authentifizierung, Datenbank, Dateispeicherung und Push-Benachrichtigungen.
+
+**Das Ziel ist eine langfristig nutzbare, vollständig funktionsfähige und erweiterbare Anwendung, die mit dem Hof und seinen Anforderungen mitwächst.**

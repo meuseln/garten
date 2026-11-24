@@ -1,0 +1,433 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isVerifiedMember() {
+      return isVerifiedEmail() &&
+        exists(/databases/$(database)/documents/homesteadMembers/$(request.auth.uid));
+    }
+
+    // --- Validation Helpers ---
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'accentColor', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'accentColor', 'role',
+          'personalNotes', 'themePreference', 'notificationSettings',
+          'dashboardLayout', 'createdAt', 'updatedAt'
+        ]) &&
+        data.uid is string && data.uid == request.auth.uid && isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        data.displayName in ['Nico', 'Chris'] &&
+        ((data.displayName == 'Nico' && data.accentColor == '#BBE774') ||
+         (data.displayName == 'Chris' && data.accentColor == '#F28090')) &&
+        data.role == 'member' &&
+        (!('personalNotes' in data) || (data.personalNotes is string && data.personalNotes.size() <= 8000)) &&
+        (!('themePreference' in data) || (data.themePreference in ['light', 'dark', 'system'])) &&
+        (!('notificationSettings' in data) || data.notificationSettings is map) &&
+        (!('dashboardLayout' in data) || (data.dashboardLayout is list && data.dashboardLayout.size() <= 30)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidHomesteadMember(data) {
+      return data.keys().hasAll(['uid', 'homesteadId', 'displayName', 'accentColor', 'role', 'lastSeenAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'homesteadId', 'displayName', 'accentColor', 'role', 'fcmToken', 'lastSeenAt', 'updatedAt']) &&
+        data.uid is string && data.uid == request.auth.uid && isValidId(data.uid) &&
+        data.homesteadId == 'mellenbach-hof' &&
+        data.displayName in ['Nico', 'Chris'] &&
+        ((data.displayName == 'Nico' && data.accentColor == '#BBE774') ||
+         (data.displayName == 'Chris' && data.accentColor == '#F28090')) &&
+        data.role == 'member' &&
+        (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 512)) &&
+        data.lastSeenAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPing(data) {
+      return data.keys().hasAll([
+          'homesteadId', 'fromUid', 'fromName', 'toName',
+          'message', 'acknowledged', 'archived', 'createdBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'homesteadId', 'fromUid', 'fromName', 'toName',
+          'message', 'acknowledged', 'archived', 'createdBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.homesteadId == 'mellenbach-hof' &&
+        data.fromUid is string && isValidId(data.fromUid) &&
+        data.fromName in ['Nico', 'Chris'] &&
+        data.toName in ['Nico', 'Chris'] &&
+        data.fromName != data.toName &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 300 &&
+        data.acknowledged is bool &&
+        data.archived is bool &&
+        data.createdBy is string && isValidId(data.createdBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidHomesteadRecord(data, expectedModule) {
+      return data.keys().hasAll([
+          'homesteadId', 'module', 'title', 'archived', 'payload',
+          'createdBy', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'homesteadId', 'module', 'title', 'archived', 'payload',
+          'createdBy', 'updatedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.homesteadId == 'mellenbach-hof' &&
+        data.module is string && data.module == expectedModule &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.archived is bool &&
+        data.payload is map &&
+        data.createdBy is string && isValidId(data.createdBy) &&
+        data.updatedBy is string && isValidId(data.updatedBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'homesteadId', 'actorUid', 'actorName', 'action',
+          'module', 'recordId', 'summary', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'homesteadId', 'actorUid', 'actorName', 'action',
+          'module', 'recordId', 'summary', 'createdAt'
+        ]) &&
+        data.homesteadId == 'mellenbach-hof' &&
+        data.actorUid is string && data.actorUid == request.auth.uid && isValidId(data.actorUid) &&
+        data.actorName in ['Nico', 'Chris'] &&
+        data.action in ['create', 'update', 'archive', 'restore', 'ping', 'seed'] &&
+        data.module is string && data.module.size() >= 1 && data.module.size() <= 64 &&
+        data.recordId is string && data.recordId.size() >= 1 && data.recordId.size() <= 128 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 400 &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Connection check doc
+    match /test/connection {
+      allow get: if isSignedIn();
+      allow list, write: if false;
+    }
+
+    // Private User Profile (PII Isolated - strictly owner-only)
+    match /users/{userId} {
+      allow get: if isVerifiedEmail() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isVerifiedEmail() && existing().uid == request.auth.uid;
+      allow create: if isVerifiedEmail() && isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidUserPrivate(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedEmail() && isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidUserPrivate(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().role == existing().role &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['personalNotes', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['themePreference', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['notificationSettings', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['dashboardLayout', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'accentColor', 'updatedAt'])
+        );
+      allow delete: if isVerifiedEmail() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // Non-PII Homestead Member Directory
+    match /homesteadMembers/{userId} {
+      allow get: if isVerifiedEmail() && isValidId(userId) &&
+        (request.auth.uid == userId || isVerifiedMember());
+      allow list: if isVerifiedEmail() && existing().homesteadId == 'mellenbach-hof';
+      allow create: if isVerifiedEmail() && isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidHomesteadMember(incoming()) &&
+        incoming().lastSeenAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedEmail() && isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidHomesteadMember(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().homesteadId == existing().homesteadId &&
+        incoming().role == existing().role &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['lastSeenAt', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['fcmToken', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'accentColor', 'lastSeenAt', 'updatedAt'])
+        );
+      allow delete: if isVerifiedEmail() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // One-Click Pings
+    match /pings/{pingId} {
+      allow get: if isValidId(pingId) && isVerifiedMember() && existing().homesteadId == 'mellenbach-hof';
+      allow list: if isVerifiedEmail() && existing().homesteadId == 'mellenbach-hof';
+      allow create: if isValidId(pingId) &&
+        isVerifiedMember() &&
+        isValidPing(incoming()) &&
+        incoming().fromUid == request.auth.uid &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().acknowledged == false &&
+        incoming().archived == false &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(pingId) &&
+        isVerifiedMember() &&
+        isValidPing(incoming()) &&
+        incoming().homesteadId == existing().homesteadId &&
+        incoming().fromUid == existing().fromUid &&
+        incoming().fromName == existing().fromName &&
+        incoming().toName == existing().toName &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['acknowledged', 'updatedAt'])) ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['archived', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
+    // Immutable Audit Logs
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isVerifiedMember() && existing().homesteadId == 'mellenbach-hof';
+      allow list: if isVerifiedEmail() && existing().homesteadId == 'mellenbach-hof';
+      allow create: if isValidId(logId) &&
+        isVerifiedMember() &&
+        isValidAuditLog(incoming()) &&
+        incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // Shared Homestead Module Collections (Unified Action-Based Hardened Rules)
+    function allowSharedGet(recordId) {
+      return isValidId(recordId) && isVerifiedMember() && existing().homesteadId == 'mellenbach-hof';
+    }
+
+    function allowSharedList() {
+      return isVerifiedEmail() && existing().homesteadId == 'mellenbach-hof';
+    }
+
+    function allowSharedCreate(recordId, moduleName) {
+      return isValidId(recordId) &&
+        isVerifiedMember() &&
+        isValidHomesteadRecord(incoming(), moduleName) &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().updatedBy == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+    }
+
+    function allowSharedUpdate(recordId, moduleName) {
+      return isValidId(recordId) &&
+        isVerifiedMember() &&
+        isValidHomesteadRecord(incoming(), moduleName) &&
+        incoming().homesteadId == existing().homesteadId &&
+        incoming().module == existing().module &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedBy == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'payload', 'updatedBy', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['archived', 'updatedBy', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['payload', 'updatedBy', 'updatedAt'])
+        );
+    }
+
+    function allowSharedDelete(recordId) {
+      return isValidId(recordId) && isVerifiedMember() && existing().homesteadId == 'mellenbach-hof';
+    }
+
+    match /areas/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'areas');
+      allow update: if allowSharedUpdate(recordId, 'areas');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /plants/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'plants');
+      allow update: if allowSharedUpdate(recordId, 'plants');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /plantings/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'plantings');
+      allow update: if allowSharedUpdate(recordId, 'plantings');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /seeds/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'seeds');
+      allow update: if allowSharedUpdate(recordId, 'seeds');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /animalGroups/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'animalGroups');
+      allow update: if allowSharedUpdate(recordId, 'animalGroups');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /animalLogs/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'animalLogs');
+      allow update: if allowSharedUpdate(recordId, 'animalLogs');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /feedStocks/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'feedStocks');
+      allow update: if allowSharedUpdate(recordId, 'feedStocks');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /harvests/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'harvests');
+      allow update: if allowSharedUpdate(recordId, 'harvests');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /recipes/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'recipes');
+      allow update: if allowSharedUpdate(recordId, 'recipes');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /batches/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'batches');
+      allow update: if allowSharedUpdate(recordId, 'batches');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /inventoryItems/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'inventoryItems');
+      allow update: if allowSharedUpdate(recordId, 'inventoryItems');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /resources/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'resources');
+      allow update: if allowSharedUpdate(recordId, 'resources');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /projects/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'projects');
+      allow update: if allowSharedUpdate(recordId, 'projects');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /calendarEvents/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'calendarEvents');
+      allow update: if allowSharedUpdate(recordId, 'calendarEvents');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /knowledgeEntries/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'knowledgeEntries');
+      allow update: if allowSharedUpdate(recordId, 'knowledgeEntries');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /equipment/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'equipment');
+      allow update: if allowSharedUpdate(recordId, 'equipment');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /financeEntries/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'financeEntries');
+      allow update: if allowSharedUpdate(recordId, 'financeEntries');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /shoppingItems/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'shoppingItems');
+      allow update: if allowSharedUpdate(recordId, 'shoppingItems');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /documents/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'documents');
+      allow update: if allowSharedUpdate(recordId, 'documents');
+      allow delete: if allowSharedDelete(recordId);
+    }
+
+    match /emergencyConfig/{recordId} {
+      allow get: if allowSharedGet(recordId);
+      allow list: if allowSharedList();
+      allow create: if allowSharedCreate(recordId, 'emergencyConfig');
+      allow update: if allowSharedUpdate(recordId, 'emergencyConfig');
+      allow delete: if allowSharedDelete(recordId);
+    }
+  }
+}

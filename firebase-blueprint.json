@@ -1,0 +1,188 @@
+{
+  "entities": {
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private user account data and personal preferences (PII isolated).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "displayName": { "type": "string", "enum": ["Nico", "Chris"] },
+        "accentColor": { "type": "string", "enum": ["#BBE774", "#F28090"] },
+        "role": { "type": "string", "enum": ["member"] },
+        "personalNotes": { "type": "string", "maxLength": 8000 },
+        "themePreference": { "type": "string", "enum": ["light", "dark", "system"] },
+        "notificationSettings": { "type": "object" },
+        "dashboardLayout": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "accentColor", "role", "createdAt", "updatedAt"]
+    },
+    "HomesteadMember": {
+      "title": "HomesteadMember",
+      "description": "Non-PII shared homestead member presence and display identity.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "homesteadId": { "type": "string", "enum": ["mellenbach-hof"] },
+        "displayName": { "type": "string", "enum": ["Nico", "Chris"] },
+        "accentColor": { "type": "string", "enum": ["#BBE774", "#F28090"] },
+        "role": { "type": "string", "enum": ["member"] },
+        "fcmToken": { "type": "string", "maxLength": 512 },
+        "lastSeenAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "homesteadId", "displayName", "accentColor", "role", "lastSeenAt", "updatedAt"]
+    },
+    "Ping": {
+      "title": "Ping",
+      "description": "One-click ping between Nico and Chris.",
+      "type": "object",
+      "properties": {
+        "homesteadId": { "type": "string", "enum": ["mellenbach-hof"] },
+        "fromUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fromName": { "type": "string", "enum": ["Nico", "Chris"] },
+        "toName": { "type": "string", "enum": ["Nico", "Chris"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "acknowledged": { "type": "boolean" },
+        "archived": { "type": "boolean" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["homesteadId", "fromUid", "fromName", "toName", "message", "acknowledged", "archived", "createdBy", "createdAt", "updatedAt"]
+    },
+    "HomesteadRecord": {
+      "title": "HomesteadRecord",
+      "description": "Shared homestead entity record across all operational modules.",
+      "type": "object",
+      "properties": {
+        "homesteadId": { "type": "string", "enum": ["mellenbach-hof"] },
+        "module": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "archived": { "type": "boolean" },
+        "payload": { "type": "object" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["homesteadId", "module", "title", "archived", "payload", "createdBy", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable change log tracking who changed what and when.",
+      "type": "object",
+      "properties": {
+        "homesteadId": { "type": "string", "enum": ["mellenbach-hof"] },
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorName": { "type": "string", "enum": ["Nico", "Chris"] },
+        "action": { "type": "string", "enum": ["create", "update", "archive", "restore", "ping", "seed"] },
+        "module": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "recordId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["homesteadId", "actorUid", "actorName", "action", "module", "recordId", "summary", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private user profile, personal notes, notification settings, dashboard layout."
+    },
+    "/homesteadMembers/{userId}": {
+      "schema": { "$ref": "#/entities/HomesteadMember" },
+      "description": "Shared non-PII presence and display identity for Nico and Chris."
+    },
+    "/pings/{pingId}": {
+      "schema": { "$ref": "#/entities/Ping" },
+      "description": "One-click ping notifications between Nico and Chris."
+    },
+    "/areas/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Grundstücksbereiche und Flächenverwaltung."
+    },
+    "/plants/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Pflanzen- und Sortendatenbank."
+    },
+    "/plantings/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Saisonkalender und Beetplanung."
+    },
+    "/seeds/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Saatgutverwaltung."
+    },
+    "/animalGroups/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Tiergruppen und Bestände."
+    },
+    "/animalLogs/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Tierversorgung, Produktion und Gesundheit."
+    },
+    "/feedStocks/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Futterverwaltung und Bestände."
+    },
+    "/harvests/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Erntedatensätze und Verwendungsaufteilung."
+    },
+    "/recipes/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Skalierbare Rezepte zur Lebensmittelverarbeitung."
+    },
+    "/batches/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Verarbeitungschargen und QR-Etiketten."
+    },
+    "/inventoryItems/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Vorratskammer und Lagerorte."
+    },
+    "/resources/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Boden, Kompost, Wasser und Dünger/Mulch."
+    },
+    "/projects/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Bau- und Hofprojekte."
+    },
+    "/calendarEvents/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Kalendertermine und Aufgaben."
+    },
+    "/knowledgeEntries/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Fachwissen, Erfahrungswissen, Naturbeobachtungen, Wildkräuter & Pilze."
+    },
+    "/equipment/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Werkzeuge, Maschinen und Wartung."
+    },
+    "/financeEntries/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Kosten, Ausgaben und Erträge."
+    },
+    "/shoppingItems/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Gemeinsame Einkaufsliste."
+    },
+    "/documents/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Dokumentenverwaltung."
+    },
+    "/emergencyConfig/{recordId}": {
+      "schema": { "$ref": "#/entities/HomesteadRecord" },
+      "description": "Urlaubs- und Notfallmodus."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Änderungsverlauf (Wer, Was, Wann)."
+    }
+  }
+}

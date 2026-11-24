@@ -1,0 +1,6 @@
+{
+  "name": "Hof & Garten",
+  "description": "Gemeinsame Selbstversorger-, Garten-, Tier- und Vorratsverwaltung für Nico & Chris in Mellenbach-Glasbach, Thüringen.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
