@@ -6,8 +6,11 @@ import {
   Plus,
   Printer,
   QrCode,
+  Save,
   ShieldAlert,
+  ShoppingCart,
   Sparkles,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
 import {
@@ -24,8 +27,11 @@ import type {
   HarvestPayload,
   HomesteadRecord,
   InventoryItemPayload,
+  MealPlanDayEntry,
   RecipePayload,
 } from '../types/homestead';
+
+const WEEKDAYS_DE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
 const ALLOCATION_OPTIONS: HarvestAllocationType[] = [
   'Frischverbrauch',
@@ -58,6 +64,10 @@ export const PantryView: React.FC = () => {
     inventoryItems,
     recipes,
     areas,
+    plantings,
+    animalLogs,
+    sharedMealPlan,
+    updateMealPlan,
     deepLinkBatch,
     setDeepLinkBatch,
     createRecord,
@@ -66,8 +76,15 @@ export const PantryView: React.FC = () => {
     pushToast,
   } = useHomestead();
 
-  const [tab, setTab] = useState<'harvests' | 'batches' | 'inventory' | 'recipes'>('inventory');
+  const [tab, setTab] = useState<'harvests' | 'batches' | 'inventory' | 'recipes' | 'mealplan'>('inventory');
+  const [mealDraft, setMealDraft] = useState<Record<string, MealPlanDayEntry>>({});
+  const [savingMealPlan, setSavingMealPlan] = useState(false);
+  const [quickMissingItem, setQuickMissingItem] = useState('');
   const [qrBatchModal, setQrBatchModal] = useState<HomesteadRecord<BatchPayload> | null>(null);
+
+  useEffect(() => {
+    setMealDraft(sharedMealPlan || {});
+  }, [sharedMealPlan]);
 
   // Recipe scaling & suggestions
   const [availableInputKg, setAvailableInputKg] = useState<number>(4.5);
@@ -296,6 +313,7 @@ export const PantryView: React.FC = () => {
         onChange={(id) => setTab(id as typeof tab)}
         tabs={[
           { id: 'inventory', label: `Vorratskammer (${activeInventory.length})` },
+          { id: 'mealplan', label: 'Wochenplan & Küche' },
           { id: 'batches', label: `Chargen & QR (${activeBatches.length})` },
           { id: 'harvests', label: `Ernten (${activeHarvests.length})` },
           { id: 'recipes', label: `Rezepte & Vorschläge (${activeRecipes.length})` },
@@ -346,8 +364,33 @@ export const PantryView: React.FC = () => {
                           1 Entnahme
                         </button>
                       </div>
-                      <div className="text-xs text-neutral-500 flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800">
-                        <span>Status: {item.payload.qualityStatus}</span>
+                      <div className="text-xs text-neutral-500 flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800 gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateRecord(
+                              'inventoryItems',
+                              item.id,
+                              item.title,
+                              {
+                                ...item.payload,
+                                qualityStatus:
+                                  item.payload.qualityStatus === 'Bald verbrauchen'
+                                    ? 'Einwandfrei'
+                                    : 'Bald verbrauchen',
+                              },
+                              item.updatedAtMs
+                            )
+                          }
+                          className={`px-2 py-0.5 rounded font-medium ${
+                            item.payload.qualityStatus === 'Bald verbrauchen'
+                              ? 'bg-[#FFC814]/25 text-[#7A4400] dark:text-[#FFD65A]'
+                              : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                          }`}
+                          title="Klicken zum Umschalten: Einwandfrei / Bald verbrauchen"
+                        >
+                          {item.payload.qualityStatus}
+                        </button>
                         <button
                           type="button"
                           onClick={() => archiveRecord('inventoryItems', item.id, item.title)}
@@ -620,6 +663,171 @@ export const PantryView: React.FC = () => {
           />
         </div>
       )}
+
+      {/* TAB 5: Wochenplan & Küche aus Bestand */}
+      {tab === 'mealplan' && (() => {
+        const useSoonItems = activeInventory.filter(
+          (i) => i.payload.quantity > 0 && i.payload.qualityStatus === 'Bald verbrauchen'
+        );
+        const recentEggs = animalLogs
+          .filter(
+            (l) =>
+              !l.archived &&
+              l.payload.logType === 'Eier' &&
+              l.payload.date >= new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+          )
+          .reduce((s, l) => s + (l.payload.quantity || 0), 0);
+        const activeBedCrops = plantings.filter((p) => !p.archived && p.payload.status !== 'Abgeerntet');
+
+        return (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="bg-white dark:bg-[#161D1A] border border-[#FFC814]/50 rounded-2xl p-4 space-y-1.5">
+                <div className="font-semibold text-[#7A4400] dark:text-[#FFD65A] flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4" />
+                  Bald verbrauchen ({useSoonItems.length})
+                </div>
+                {useSoonItems.length === 0 ? (
+                  <p className="text-neutral-500">
+                    Markiere Vorräte im Tab „Vorratskammer“ mit „Bald verbrauchen“, damit sie hier zuerst auftauchen.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {useSoonItems.slice(0, 4).map((i) => (
+                      <li key={i.id} className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{i.title}</span>
+                        <span className="font-mono-num text-neutral-500 shrink-0">
+                          {i.payload.quantity} {i.payload.unit}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="bg-white dark:bg-[#161D1A] border border-[#65A30D]/40 rounded-2xl p-4 space-y-1.5">
+                <div className="font-semibold text-[#233A29] dark:text-[#BBE774]">
+                  Frisch von unseren Beeten ({activeBedCrops.length})
+                </div>
+                {activeBedCrops.length === 0 ? (
+                  <p className="text-neutral-500">Noch keine aktiven Beetbelegungen eingetragen.</p>
+                ) : (
+                  <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                    {activeBedCrops
+                      .slice(0, 8)
+                      .map((p) => `${p.payload.plantName} (${p.payload.status})`)
+                      .join(' · ')}
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-2">
+                <div className="font-semibold flex items-center justify-between">
+                  <span>Eier &amp; Einkauf</span>
+                  <span className="font-mono-num text-[#D97706]">{recentEggs} Eier / 7 T.</span>
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={quickMissingItem}
+                    onChange={(e) => setQuickMissingItem(e.target.value)}
+                    placeholder="Fehlende Zutat merken…"
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                  />
+                  <button
+                    type="button"
+                    disabled={!quickMissingItem.trim()}
+                    onClick={async () => {
+                      await createRecord('shoppingItems', quickMissingItem.trim(), {
+                        category: 'Vorrat',
+                        quantity: 1,
+                        unit: 'Stück',
+                        source: 'Wochenplan',
+                        estimatedPriceEur: 0,
+                        purchased: false,
+                      });
+                      pushToast('success', `„${quickMissingItem.trim()}“ auf Einkaufsliste gesetzt.`);
+                      setQuickMissingItem('');
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#233A29] text-white font-semibold inline-flex items-center gap-1 disabled:opacity-40"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-base font-bold flex items-center gap-2">
+                    <UtensilsCrossed className="w-4 h-4 text-[#CF6432]" />
+                    Gemeinsamer Wochenplan (Nico &amp; Chris)
+                  </h2>
+                  <p className="text-xs text-neutral-500">
+                    Plant locker vor, was aus Vorratskammer, Gefrierschrank, Eiern &amp; Beet auf den Tisch kommt.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingMealPlan}
+                  onClick={async () => {
+                    setSavingMealPlan(true);
+                    try {
+                      await updateMealPlan(mealDraft);
+                    } finally {
+                      setSavingMealPlan(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 hover:opacity-90 disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {savingMealPlan ? 'Speichert…' : 'Wochenplan speichern'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {WEEKDAYS_DE.map((day) => {
+                  const entry = mealDraft[day] || { meal: '', usesInventory: '', notes: '' };
+                  return (
+                    <div
+                      key={day}
+                      className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412] border border-neutral-200 dark:border-neutral-800 space-y-2 text-xs"
+                    >
+                      <div className="font-display font-bold text-neutral-900 dark:text-neutral-100">{day}</div>
+                      <input
+                        type="text"
+                        value={entry.meal}
+                        onChange={(e) =>
+                          setMealDraft((prev) => ({
+                            ...prev,
+                            [day]: { ...entry, meal: e.target.value },
+                          }))
+                        }
+                        placeholder="z.B. Omelett mit Kräutern & Salat"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-xs"
+                      />
+                      <input
+                        type="text"
+                        value={entry.usesInventory || ''}
+                        onChange={(e) =>
+                          setMealDraft((prev) => ({
+                            ...prev,
+                            [day]: { ...entry, usesInventory: e.target.value },
+                          }))
+                        }
+                        placeholder="Vorrat / Beet (z.B. Eier, Glas Bohnen)"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#161D1A] text-[11px]"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* QR Batch Label Modal */}
       <Modal

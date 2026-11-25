@@ -118,7 +118,7 @@ export const PropertyView: React.FC = () => {
 
       <SegmentedTabs
         tabs={[
-          { id: 'map', label: 'Gartenkarte (S/W-Schema)' },
+          { id: 'map', label: 'Gartenkarte (Schemazeichnung)' },
           { id: 'list', label: `Flächen & Beete (${activeAreas.length})` },
         ]}
         activeTab={tab}

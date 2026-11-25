@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
-  Eye,
-  EyeOff,
+  Grid3x3,
   MapPin,
   MousePointer,
   PenTool,
   RotateCcw,
   Save,
+  Sprout,
   Square,
   Trash2,
   Type,
@@ -16,6 +16,9 @@ import { useHomestead } from '../../context/HomesteadContext';
 import type { GardenMapItem } from '../../types/homestead';
 
 export const GARDEN_MAP_DOC_ID = 'garden_map_schema_v1';
+
+const MAP_WIDTH = 1425;
+const MAP_HEIGHT = 1104;
 
 type MapTool = 'select' | 'rect' | 'polygon' | 'label';
 
@@ -29,8 +32,12 @@ const COLOR_SWATCHES: Array<{ color: string; name: string }> = [
 ];
 
 export const GardenMapCanvas: React.FC = () => {
-  const { areas, documents, createRecord, updateRecord, pushToast } = useHomestead();
+  const { areas, plantings, documents, createRecord, updateRecord, pushToast } = useHomestead();
   const activeAreas = useMemo(() => areas.filter((a) => !a.archived), [areas]);
+  const activePlantings = useMemo(
+    () => plantings.filter((p) => !p.archived && p.payload.status !== 'Abgeerntet'),
+    [plantings]
+  );
   const mapDoc = useMemo(
     () => documents.find((d) => d.id === GARDEN_MAP_DOC_ID && !d.archived) || null,
     [documents]
@@ -48,10 +55,10 @@ export const GardenMapCanvas: React.FC = () => {
   }, [mapDoc, hasUnsavedChanges]);
 
   const [tool, setTool] = useState<MapTool>('select');
-  const [activeColor, setActiveColor] = useState<string>('#18201B');
+  const [activeColor, setActiveColor] = useState<string>('#3B6912');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAerialOverlay, setShowAerialOverlay] = useState(false);
-  const [showZoneHints, setShowZoneHints] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
 
   // Drawing states
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -70,15 +77,25 @@ export const GardenMapCanvas: React.FC = () => {
     [items, selectedId]
   );
 
+  const linkedAreaPlantings = useMemo(() => {
+    if (!selectedItem?.linkedAreaId) return [];
+    const linkedArea = activeAreas.find((a) => a.id === selectedItem.linkedAreaId);
+    return activePlantings.filter(
+      (pl) =>
+        pl.payload.areaId === selectedItem.linkedAreaId ||
+        (linkedArea && pl.payload.areaName.toLowerCase() === linkedArea.title.toLowerCase())
+    );
+  }, [selectedItem, activeAreas, activePlantings]);
+
   const getSvgCoords = (e: React.PointerEvent<Element>): { x: number; y: number } => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * 1000);
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * 740);
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * MAP_WIDTH);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * MAP_HEIGHT);
     return {
-      x: Math.max(10, Math.min(990, x)),
-      y: Math.max(10, Math.min(730, y)),
+      x: Math.max(12, Math.min(MAP_WIDTH - 12, x)),
+      y: Math.max(12, Math.min(MAP_HEIGHT - 12, y)),
     };
   };
 
@@ -135,8 +152,8 @@ export const GardenMapCanvas: React.FC = () => {
           it.id === dragState.id
             ? {
                 ...it,
-                x: Math.max(20, Math.min(960, dragState.origX + dx)),
-                y: Math.max(20, Math.min(710, dragState.origY + dy)),
+                x: Math.max(20, Math.min(MAP_WIDTH - 40, dragState.origX + dx)),
+                y: Math.max(20, Math.min(MAP_HEIGHT - 30, dragState.origY + dy)),
               }
             : it
         )
@@ -152,7 +169,7 @@ export const GardenMapCanvas: React.FC = () => {
       const width = Math.abs(rectDraft.x2 - rectDraft.x1);
       const height = Math.abs(rectDraft.y2 - rectDraft.y1);
       setRectDraft(null);
-      if (width >= 16 && height >= 16) {
+      if (width >= 20 && height >= 20) {
         const newId = `rect_${Date.now()}`;
         const newItem: GardenMapItem = {
           id: newId,
@@ -217,9 +234,9 @@ export const GardenMapCanvas: React.FC = () => {
         docType: 'Grundstück' as const,
         linkedModule: 'Grundstück',
         date: new Date().toISOString().slice(0, 10),
-        fileName: 'gartenkarte-schema-mellenbach.svg',
+        fileName: 'gartenkarte-schema-mellenbach.png',
         externalUrl: '',
-        notes: 'Interaktive Grundstückskarte Karl-Marx-Str. 113 (Schwarz-Weiß-Schema)',
+        notes: 'Interaktive Grundstückskarte Karl-Marx-Str. 113 (Originale Schemazeichnung)',
         mapItems: items,
       };
       if (mapDoc) {
@@ -241,31 +258,31 @@ export const GardenMapCanvas: React.FC = () => {
         kind: 'rect',
         label: 'Hochbeete / Gemüse',
         color: '#3B6912',
-        x: 495,
-        y: 255,
-        width: 68,
-        height: 45,
-        notes: 'Sonniger Platz nah an Terrasse & Küche',
+        x: 685,
+        y: 355,
+        width: 115,
+        height: 75,
+        notes: 'Sonniger Platz nah an Wohnhaus & Terrasse',
       },
       {
         id: 'sample_obst',
         kind: 'rect',
         label: 'Obstbäume & Beeren',
         color: '#D97706',
-        x: 195,
+        x: 240,
         y: 165,
-        width: 140,
-        height: 95,
-        notes: 'Oberer Hang-Garten',
+        width: 240,
+        height: 155,
+        notes: 'Oberer Garten (Hang)',
       },
       {
-        id: 'sample_wiese',
+        id: 'sample_suedgarten',
         kind: 'label',
-        label: 'Süd-Wiese',
-        color: '#18201B',
-        x: 705,
-        y: 575,
-        notes: 'Straßenseite / Wiese',
+        label: 'Hühner / Wiese (Süd)',
+        color: '#CF6432',
+        x: 910,
+        y: 745,
+        notes: 'Unterer Garten an der Karl-Marx-Straße',
       },
     ];
     setItems((prev) => [...prev, ...samples]);
@@ -353,11 +370,15 @@ export const GardenMapCanvas: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setShowZoneHints((v) => !v)}
-            className="min-h-[40px] px-3 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1.5"
+            onClick={() => setShowGrid((v) => !v)}
+            className={`min-h-[40px] px-3 rounded-xl border text-xs font-medium inline-flex items-center gap-1.5 ${
+              showGrid
+                ? 'bg-[#233A29]/10 border-[#233A29] text-[#233A29] dark:text-[#BBE774]'
+                : 'border-neutral-200 dark:border-neutral-700'
+            }`}
           >
-            {showZoneHints ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            Zonen-Texte
+            <Grid3x3 className="w-3.5 h-3.5" />
+            Raster
           </button>
 
           <button
@@ -370,7 +391,7 @@ export const GardenMapCanvas: React.FC = () => {
             }`}
           >
             <MapPin className="w-3.5 h-3.5" />
-            {showAerialOverlay ? 'Luftbild aus' : 'Luftbild einblenden'}
+            {showAerialOverlay ? 'Luftbild aus' : 'Luftbild-Vergleich'}
           </button>
 
           {items.length === 0 && (
@@ -402,9 +423,9 @@ export const GardenMapCanvas: React.FC = () => {
       {/* Tool usage hint */}
       <div className="text-xs text-neutral-600 dark:text-neutral-400 px-1">
         {tool === 'select' &&
-          'Schwarz-Weiß-Schema nach eurem Luftbild: Tippe auf einen Bereich oder Marker zum Beschriften/Verschieben, oder wähle oben ein Zeichenwerkzeug.'}
+          'Originale Grundstücks-Schemazeichnung (Karl-Marx-Str. 113): Tippe auf eine Markierung zum Verschieben/Verknüpfen oder wähle oben ein Zeichenwerkzeug.'}
         {tool === 'rect' &&
-          'Ziehe mit Maus oder Finger ein Rechteck direkt auf die Gartenkarte (z.B. für ein Beet, Gewächshaus oder Hühnerauslauf).'}
+          'Ziehe mit Maus oder Finger ein Rechteck direkt auf deine Schemazeichnung (z.B. für ein Beet, Gewächshaus oder Hühnerauslauf).'}
         {tool === 'polygon' &&
           'Tippe nacheinander die Eckpunkte deiner gewünschten Fläche an und klicke danach auf „Fläche schließen“.'}
         {tool === 'label' &&
@@ -412,272 +433,63 @@ export const GardenMapCanvas: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* Main Interactive Architectural B&W Map SVG */}
+        {/* Main Interactive Map SVG over User's Exact Schematic Drawing */}
         <div className="lg:col-span-9 bg-white border-2 border-neutral-900 rounded-2xl overflow-hidden shadow-xs">
           <svg
             ref={svgRef}
-            viewBox="0 0 1000 740"
+            viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
             className="w-full h-auto block select-none touch-none cursor-crosshair bg-white"
             onPointerDown={handleSvgPointerDown}
             onPointerMove={handleSvgPointerMove}
             onPointerUp={handleSvgPointerUp}
           >
             <defs>
-              {/* Crisp Architectural Paper Grid */}
-              <pattern id="bw-grid" width="25" height="25" patternUnits="userSpaceOnUse">
-                <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#E5E7EB" strokeWidth="0.7" />
-              </pattern>
-              {/* Diagonal Hatch for Wohnhaus 113 */}
-              <pattern id="house-hatch" width="10" height="10" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-                <line x1="0" y1="0" x2="0" y2="10" stroke="#18201B" strokeWidth="2.2" />
-              </pattern>
-              {/* Cross-hatch / Paving for Terrasse */}
-              <pattern id="terrace-paving" width="12" height="12" patternUnits="userSpaceOnUse">
-                <rect width="12" height="12" fill="#F3F4F6" />
-                <path d="M 12 0 L 0 0 0 12" fill="none" stroke="#6B7280" strokeWidth="0.9" />
-              </pattern>
-              {/* Subtle Hatch for Nebengebäude */}
-              <pattern id="shed-hatch" width="8" height="8" patternTransform="rotate(-45 0 0)" patternUnits="userSpaceOnUse">
-                <line x1="0" y1="0" x2="0" y2="8" stroke="#6B7280" strokeWidth="1.2" />
+              <pattern id="bw-grid" width="35" height="35" patternUnits="userSpaceOnUse">
+                <path d="M 35 0 L 0 0 0 35" fill="none" stroke="#CBD5E1" strokeWidth="0.9" />
               </pattern>
             </defs>
 
-            {/* White paper + subtle blueprint grid */}
-            <rect data-bg="true" x="0" y="0" width="1000" height="740" fill="#FFFFFF" />
-            <rect data-bg="true" x="0" y="0" width="1000" height="740" fill="url(#bw-grid)" />
+            {/* White paper background */}
+            <rect data-bg="true" x="0" y="0" width={MAP_WIDTH} height={MAP_HEIGHT} fill="#FFFFFF" />
 
-            {/* Optional Aerial Comparison Overlay */}
+            {/* Optional Aerial Comparison Overlay underneath schematic */}
             {showAerialOverlay && (
               <image
                 href="/assets/aistudio/image_695e71a4.png"
                 x="0"
                 y="0"
-                width="1000"
-                height="740"
+                width={MAP_WIDTH}
+                height={MAP_HEIGHT}
                 preserveAspectRatio="none"
-                opacity="0.34"
+                opacity="0.32"
                 style={{ pointerEvents: 'none' }}
               />
             )}
 
-            {/* === ARCHITECTURAL BASE LAYER (Schwarz-Weiß-Schema nach Luftbild) === */}
-
-            {/* Karl-Marx-Straße (diagonal along right edge) */}
-            <polygon
-              points="920,0 1000,0 1000,740 765,740"
-              fill="#F3F4F6"
-              stroke="#4B5563"
-              strokeWidth="1.5"
-              style={{ pointerEvents: 'none' }}
-            />
-            <line
-              x1="965"
-              y1="0"
-              x2="808"
-              y2="740"
-              stroke="#9CA3AF"
-              strokeWidth="2"
-              strokeDasharray="14 10"
-              style={{ pointerEvents: 'none' }}
-            />
-            <text
-              x="892"
-              y="390"
-              fill="#111827"
-              fontSize="16"
-              fontWeight="700"
-              letterSpacing="1.5"
-              transform="rotate(-77 892 390)"
-              style={{ pointerEvents: 'none' }}
-            >
-              KARL-MARX-STRASSE
-            </text>
-
-            {/* Nachbargebäude Nord (Context only, dashed outline) */}
-            <polygon
-              points="735,0 855,20 795,245 680,220"
-              fill="#F9FAFB"
-              stroke="#9CA3AF"
-              strokeWidth="1.5"
-              strokeDasharray="6 4"
-              style={{ pointerEvents: 'none' }}
-            />
-            <text x="725" y="135" fill="#6B7280" fontSize="11" fontWeight="600" style={{ pointerEvents: 'none' }}>
-              Nachbarhaus (N)
-            </text>
-
-            {/* Grundstücksgrenze 1: Oberer Hang-Garten + Hausrasen (Yellow boundary traced from image) */}
-            <polygon
-              points="132,74 648,252 634,312 658,334 646,428 74,280"
-              fill="#FFFFFF"
-              fillOpacity={showAerialOverlay ? '0.25' : '0.88'}
-              stroke="#111827"
-              strokeWidth="3.5"
-              strokeLinejoin="round"
+            {/* User's Exact Black-and-White Schematic Drawing */}
+            <image
+              href="/assets/aistudio/image_6db0e6d5.png"
+              x="0"
+              y="0"
+              width={MAP_WIDTH}
+              height={MAP_HEIGHT}
+              preserveAspectRatio="xMidYMid meet"
+              opacity={showAerialOverlay ? '0.78' : '1'}
               style={{ pointerEvents: 'none' }}
             />
 
-            {/* Internal fence/slope line seen in aerial photo dividing upper slope & house lawn */}
-            <line
-              x1="518"
-              y1="205"
-              x2="458"
-              y2="378"
-              stroke="#4B5563"
-              strokeWidth="1.8"
-              strokeDasharray="6 4"
-              style={{ pointerEvents: 'none' }}
-            />
-
-            {/* Grundstücksgrenze 2: Süd-Wiese an der Straße (Yellow boundary bottom-right) */}
-            <polygon
-              points="668,444 846,496 812,712 576,622"
-              fill="#FFFFFF"
-              fillOpacity={showAerialOverlay ? '0.25' : '0.88'}
-              stroke="#111827"
-              strokeWidth="3.5"
-              strokeLinejoin="round"
-              style={{ pointerEvents: 'none' }}
-            />
-
-            {/* Connecting passage between Hausgarten & Süd-Wiese */}
-            <line
-              x1="646"
-              y1="428"
-              x2="668"
-              y2="444"
-              stroke="#111827"
-              strokeWidth="2.5"
-              strokeDasharray="4 3"
-              style={{ pointerEvents: 'none' }}
-            />
-
-            {/* TERRASSE (directly southwest/west of Wohnhaus 113) */}
-            <polygon
-              points="578,318 636,328 625,408 568,398"
-              fill="url(#terrace-paving)"
-              stroke="#111827"
-              strokeWidth="2.2"
-              style={{ pointerEvents: 'none' }}
-            />
-            <text
-              x="600"
-              y="366"
-              textAnchor="middle"
-              fill="#111827"
-              fontSize="12"
-              fontWeight="800"
-              style={{ pointerEvents: 'none' }}
-            >
-              Terrasse
-            </text>
-
-            {/* WOHNHAUS Nr. 113 */}
-            <polygon
-              points="638,242 758,262 742,348 626,328"
-              fill="url(#house-hatch)"
-              stroke="#111827"
-              strokeWidth="3"
-              style={{ pointerEvents: 'none' }}
-            />
-            <rect
-              x="644"
-              y="272"
-              width="96"
-              height="38"
-              rx="4"
-              fill="#FFFFFF"
-              stroke="#111827"
-              strokeWidth="1.8"
-              style={{ pointerEvents: 'none' }}
-            />
-            <text
-              x="692"
-              y="289"
-              textAnchor="middle"
-              fill="#111827"
-              fontSize="12"
-              fontWeight="800"
-              style={{ pointerEvents: 'none' }}
-            >
-              Wohnhaus
-            </text>
-            <text
-              x="692"
-              y="304"
-              textAnchor="middle"
-              fill="#111827"
-              fontSize="11"
-              fontWeight="700"
-              style={{ pointerEvents: 'none' }}
-            >
-              Nr. 113
-            </text>
-
-            {/* Nebengebäude / Anbau am Hof */}
-            <polygon
-              points="742,318 886,362 852,456 710,412"
-              fill="url(#shed-hatch)"
-              stroke="#111827"
-              strokeWidth="2.2"
-              style={{ pointerEvents: 'none' }}
-            />
-            <rect
-              x="752"
-              y="368"
-              width="88"
-              height="24"
-              rx="3"
-              fill="#FFFFFF"
-              stroke="#374151"
-              strokeWidth="1.2"
-              style={{ pointerEvents: 'none' }}
-            />
-            <text
-              x="796"
-              y="384"
-              textAnchor="middle"
-              fill="#1F2937"
-              fontSize="11"
-              fontWeight="700"
-              style={{ pointerEvents: 'none' }}
-            >
-              Nebengebäude
-            </text>
-
-            {/* Kleiner Schuppen in der Süd-Wiese */}
-            <polygon
-              points="778,496 840,515 824,578 764,558"
-              fill="url(#shed-hatch)"
-              stroke="#111827"
-              strokeWidth="2"
-              style={{ pointerEvents: 'none' }}
-            />
-            <text
-              x="801"
-              y="542"
-              textAnchor="middle"
-              fill="#111827"
-              fontSize="10"
-              fontWeight="700"
-              style={{ pointerEvents: 'none' }}
-            >
-              Schuppen
-            </text>
-
-            {/* Optional subtle B&W Zone Hints */}
-            {showZoneHints && (
-              <g style={{ pointerEvents: 'none' }}>
-                <text x="275" y="215" textAnchor="middle" fill="#4B5563" fontSize="13" fontWeight="600">
-                  Oberer Gartenteil (Hang)
-                </text>
-                <text x="535" y="305" textAnchor="middle" fill="#4B5563" fontSize="12" fontWeight="600">
-                  Hausgarten
-                </text>
-                <text x="692" y="560" textAnchor="middle" fill="#4B5563" fontSize="13" fontWeight="600">
-                  Süd-Wiese
-                </text>
-              </g>
+            {/* Optional Blueprint Grid Overlay */}
+            {showGrid && (
+              <rect
+                data-bg="true"
+                x="0"
+                y="0"
+                width={MAP_WIDTH}
+                height={MAP_HEIGHT}
+                fill="url(#bw-grid)"
+                opacity="0.55"
+                style={{ pointerEvents: 'none' }}
+              />
             )}
 
             {/* === USER-DRAWN INTERACTIVE AREAS & LABELS === */}
@@ -686,10 +498,11 @@ export const GardenMapCanvas: React.FC = () => {
               const strokeColor = item.color || '#18201B';
 
               if (item.kind === 'rect') {
-                const x = item.x ?? 100;
-                const y = item.y ?? 100;
-                const w = item.width ?? 80;
-                const h = item.height ?? 50;
+                const x = item.x ?? 200;
+                const y = item.y ?? 200;
+                const w = item.width ?? 120;
+                const h = item.height ?? 75;
+                const boxW = Math.min(240, Math.max(90, item.label.length * 10 + 30));
                 return (
                   <g
                     key={item.id}
@@ -707,29 +520,29 @@ export const GardenMapCanvas: React.FC = () => {
                       y={y}
                       width={w}
                       height={h}
-                      rx="6"
+                      rx="8"
                       fill={strokeColor}
-                      fillOpacity={strokeColor === '#18201B' ? 0.1 : 0.2}
+                      fillOpacity={strokeColor === '#18201B' ? 0.12 : 0.22}
                       stroke={strokeColor}
-                      strokeWidth={isSelected ? 3.5 : 2.2}
-                      strokeDasharray={isSelected ? '6 3' : undefined}
+                      strokeWidth={isSelected ? 4.5 : 3}
+                      strokeDasharray={isSelected ? '8 4' : undefined}
                     />
                     <rect
-                      x={x + w / 2 - Math.min(85, item.label.length * 4 + 12)}
-                      y={y + h / 2 - 11}
-                      width={Math.min(170, item.label.length * 8 + 24)}
-                      height={22}
-                      rx="4"
+                      x={x + w / 2 - boxW / 2}
+                      y={y + h / 2 - 15}
+                      width={boxW}
+                      height={30}
+                      rx="6"
                       fill="#FFFFFF"
                       stroke={strokeColor}
-                      strokeWidth="1.2"
+                      strokeWidth="1.6"
                     />
                     <text
                       x={x + w / 2}
-                      y={y + h / 2 + 4}
+                      y={y + h / 2 + 5}
                       textAnchor="middle"
                       fill="#111827"
-                      fontSize="11.5"
+                      fontSize="15.5"
                       fontWeight="700"
                     >
                       {item.label}
@@ -742,6 +555,7 @@ export const GardenMapCanvas: React.FC = () => {
                 const ptsStr = item.points.map((p) => `${p.x},${p.y}`).join(' ');
                 const cx = Math.round(item.points.reduce((s, p) => s + p.x, 0) / item.points.length);
                 const cy = Math.round(item.points.reduce((s, p) => s + p.y, 0) / item.points.length);
+                const boxW = Math.min(240, Math.max(90, item.label.length * 10 + 30));
                 return (
                   <g
                     key={item.id}
@@ -755,27 +569,27 @@ export const GardenMapCanvas: React.FC = () => {
                     <polygon
                       points={ptsStr}
                       fill={strokeColor}
-                      fillOpacity={strokeColor === '#18201B' ? 0.1 : 0.22}
+                      fillOpacity={strokeColor === '#18201B' ? 0.12 : 0.24}
                       stroke={strokeColor}
-                      strokeWidth={isSelected ? 3.5 : 2.2}
+                      strokeWidth={isSelected ? 4.5 : 3}
                       strokeLinejoin="round"
                     />
                     <rect
-                      x={cx - Math.min(85, item.label.length * 4 + 12)}
-                      y={cy - 11}
-                      width={Math.min(170, item.label.length * 8 + 24)}
-                      height={22}
-                      rx="4"
+                      x={cx - boxW / 2}
+                      y={cy - 15}
+                      width={boxW}
+                      height={30}
+                      rx="6"
                       fill="#FFFFFF"
                       stroke={strokeColor}
-                      strokeWidth="1.2"
+                      strokeWidth="1.6"
                     />
                     <text
                       x={cx}
-                      y={cy + 4}
+                      y={cy + 5}
                       textAnchor="middle"
                       fill="#111827"
-                      fontSize="11.5"
+                      fontSize="15.5"
                       fontWeight="700"
                     >
                       {item.label}
@@ -785,9 +599,9 @@ export const GardenMapCanvas: React.FC = () => {
               }
 
               // Label / Marker
-              const lx = item.x ?? 300;
-              const ly = item.y ?? 300;
-              const boxW = Math.max(72, item.label.length * 7.4 + 22);
+              const lx = item.x ?? 400;
+              const ly = item.y ?? 400;
+              const boxW = Math.max(100, item.label.length * 9.5 + 28);
               return (
                 <g
                   key={item.id}
@@ -800,18 +614,18 @@ export const GardenMapCanvas: React.FC = () => {
                     setDragState({ id: item.id, startX: pt.x, startY: pt.y, origX: lx, origY: ly });
                   }}
                 >
-                  <circle cx={lx} cy={ly} r="5.5" fill={strokeColor} stroke="#FFFFFF" strokeWidth="1.5" />
+                  <circle cx={lx} cy={ly} r="8" fill={strokeColor} stroke="#FFFFFF" strokeWidth="2.2" />
                   <rect
-                    x={lx + 8}
-                    y={ly - 13}
+                    x={lx + 11}
+                    y={ly - 17}
                     width={boxW}
-                    height={24}
-                    rx="5"
+                    height={32}
+                    rx="7"
                     fill="#FFFFFF"
                     stroke={isSelected ? '#597CD4' : strokeColor}
-                    strokeWidth={isSelected ? 2.5 : 1.5}
+                    strokeWidth={isSelected ? 3.2 : 2}
                   />
-                  <text x={lx + 16} y={ly + 3} fill="#111827" fontSize="11.5" fontWeight="700">
+                  <text x={lx + 22} y={ly + 4} fill="#111827" fontSize="15" fontWeight="700">
                     {item.label}
                   </text>
                 </g>
@@ -828,8 +642,8 @@ export const GardenMapCanvas: React.FC = () => {
                 fill={activeColor}
                 fillOpacity="0.18"
                 stroke={activeColor}
-                strokeWidth="2.5"
-                strokeDasharray="5 4"
+                strokeWidth="3.5"
+                strokeDasharray="7 5"
               />
             )}
 
@@ -840,46 +654,22 @@ export const GardenMapCanvas: React.FC = () => {
                   points={polyPoints.map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke={activeColor}
-                  strokeWidth="2.5"
-                  strokeDasharray="5 4"
+                  strokeWidth="3.5"
+                  strokeDasharray="7 5"
                 />
                 {polyPoints.map((p, idx) => (
                   <circle
                     key={`${p.x}_${p.y}_${idx}`}
                     cx={p.x}
                     cy={p.y}
-                    r="5"
+                    r="7"
                     fill="#FFFFFF"
                     stroke={activeColor}
-                    strokeWidth="2.5"
+                    strokeWidth="3"
                   />
                 ))}
               </g>
             )}
-
-            {/* Architectural Header Stamp & Compass Rose (Bottom-Left) */}
-            <g transform="translate(24, 650)" style={{ pointerEvents: 'none' }}>
-              <rect x="0" y="0" width="320" height="66" rx="6" fill="#FFFFFF" stroke="#111827" strokeWidth="2" />
-              <text x="14" y="23" fill="#111827" fontSize="13" fontWeight="800">
-                HOF & GARTEN · LAGEPLAN (S/W-SCHEMA)
-              </text>
-              <text x="14" y="41" fill="#374151" fontSize="11" fontWeight="600">
-                Karl-Marx-Str. 113 · 98744 Schwarzatal
-              </text>
-              <text x="14" y="56" fill="#6B7280" fontSize="10">
-                Wohnhaus, Terrasse & Gartengrenze nach Luftbild
-              </text>
-            </g>
-
-            {/* Compass Rose (Top-Left) */}
-            <g transform="translate(48, 52)" style={{ pointerEvents: 'none' }}>
-              <circle cx="0" cy="0" r="22" fill="#FFFFFF" stroke="#111827" strokeWidth="1.8" />
-              <polygon points="0,-16 5,-2 0,-5 -5,-2" fill="#111827" />
-              <polygon points="0,16 5,2 0,5 -5,2" fill="#E5E7EB" stroke="#111827" strokeWidth="1" />
-              <text x="0" y="-26" textAnchor="middle" fill="#111827" fontSize="11" fontWeight="800">
-                N
-              </text>
-            </g>
           </svg>
         </div>
 
@@ -908,7 +698,7 @@ export const GardenMapCanvas: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">Mit Fläche verknüpfen (optional)</label>
+                <label className="block text-xs font-medium mb-1">Mit Beet/Fläche verknüpfen</label>
                 <select
                   value={selectedItem.linkedAreaId || ''}
                   onChange={(e) => {
@@ -928,6 +718,31 @@ export const GardenMapCanvas: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {selectedItem.linkedAreaId && (
+                <div className="p-2.5 rounded-xl bg-[#BBE774]/18 border border-[#65A30D]/30 text-xs space-y-1">
+                  <div className="font-semibold text-[#233A29] dark:text-[#BBE774] flex items-center gap-1">
+                    <Sprout className="w-3.5 h-3.5" />
+                    Aktuell auf dieser Fläche:
+                  </div>
+                  {linkedAreaPlantings.length === 0 ? (
+                    <div className="text-neutral-600 dark:text-neutral-300">
+                      Noch nichts unter „Anbau → Beete“ eingetragen.
+                    </div>
+                  ) : (
+                    <ul className="space-y-0.5 text-neutral-800 dark:text-neutral-200">
+                      {linkedAreaPlantings.map((pl) => (
+                        <li key={pl.id}>
+                          • {pl.payload.plantName}
+                          {pl.payload.variety ? ` (${pl.payload.variety})` : ''} —{' '}
+                          <span className="font-medium">{pl.payload.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium mb-1">Notiz</label>
                 <textarea
@@ -942,13 +757,13 @@ export const GardenMapCanvas: React.FC = () => {
           ) : (
             <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-2 text-xs text-neutral-600 dark:text-neutral-400">
               <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                So funktioniert die Gartenkarte
+                So funktioniert eure Gartenkarte
               </div>
               <p>
-                Das Schwarz-Weiß-Schema zeigt euer Haus (Nr. 113), die Terrasse und die umgrenzten Gartenflächen aus dem Luftbild.
+                Die Karte nutzt direkt eure Schemazeichnung mit oberem Garten, Wohnhaus, unterem Garten und Karl-Marx-Straße.
               </p>
               <p>
-                Zeichne einfach Beete, Obstbäume, Hühnerauslauf oder Ideen direkt ein — per Klick werden Änderungen für Nico & Chris gespeichert.
+                Zeichne Beete, Obstbäume oder den Hühnerbereich direkt ein und verknüpfe sie mit euren Flächen — so siehst du per Klick, was dort wächst.
               </p>
             </div>
           )}

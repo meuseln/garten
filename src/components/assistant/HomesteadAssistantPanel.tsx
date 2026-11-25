@@ -57,60 +57,78 @@ export const HomesteadAssistantPanel: React.FC<{
     (k) => !k.archived && k.payload.domainType === 'Erfahrungswissen'
   );
 
-  const buildHomesteadSummary = () => ({
-    standort: REGIONAL_SOIL_WATER_REFERENCE.address,
-    datum: new Date().toISOString().slice(0, 10),
-    nutzer: activeIdentity,
-    wetter: weather
-      ? {
-          tempC: Math.round(weather.current.temp * 10) / 10,
-          minMaxC: `${Math.round(weather.today.tempMin)}/${Math.round(weather.today.tempMax)}`,
-          regenMm: weather.daily[0]?.precipSum,
-          warnung: weather.gardenAlerts[0]?.title || '',
-        }
-      : null,
-    flaechen: areas
-      .filter((a) => !a.archived)
-      .slice(0, 12)
-      .map((a) => `${a.title} (${a.payload.areaType}, ${a.payload.sizeSqm}qm)`),
-    sorten: plants
-      .filter((p) => !p.archived)
-      .slice(0, 18)
-      .map((p) => p.title),
-    beeteAktuell: plantings
-      .filter((p) => !p.archived)
-      .slice(0, 18)
-      .map((p) => `${p.title} [${p.payload.status}]`),
-    saatgutKnapp: seeds
-      .filter((s) => !s.archived && s.payload.reorderNeeded)
-      .slice(0, 10)
-      .map((s) => s.title),
-    tiere: animalGroups
-      .filter((g) => !g.archived)
-      .map((g) => `${g.title}: ${g.payload.count}`),
-    futter: feedStocks
-      .filter((f) => !f.archived)
-      .map((f) => `${f.title}: ${f.payload.quantityKg}kg (Min ${f.payload.minStockKg}kg)`),
-    vorraete: inventoryItems
-      .filter((i) => !i.archived)
-      .slice(0, 15)
-      .map((i) => `${i.title}: ${i.payload.quantity} ${i.payload.unit}`),
-    ernten: harvests
-      .filter((h) => !h.archived)
-      .slice(0, 10)
-      .map((h) => `${h.title}: ${h.payload.amount} ${h.payload.unit}`),
-    projekte: projects
-      .filter((p) => !p.archived && p.payload.status !== 'Abgeschlossen')
-      .slice(0, 8)
-      .map((p) => `${p.title} (${p.payload.status})`),
-    aufgaben: calendarEvents
-      .filter((c) => !c.archived && !c.payload.completed)
-      .slice(0, 10)
-      .map((c) => `${c.title} (${c.payload.date})`),
-    erfahrung: erfahrungEntries
-      .slice(0, 6)
-      .map((k) => `${k.title}: ${k.payload.content.slice(0, 120)}`),
-  });
+  const activePlantings = plantings.filter((p) => !p.archived && p.payload.status !== 'Abgeerntet');
+  const activeAnimals = animalGroups.filter((g) => !g.archived);
+  const activeInventory = inventoryItems.filter((i) => !i.archived && i.payload.quantity > 0);
+
+  const buildHomesteadSummary = () => {
+    const plantedNames = new Set(activePlantings.map((p) => p.payload.plantName.toLowerCase()));
+    const relevantPlantNotes = plants
+      .filter(
+        (p) =>
+          !p.archived &&
+          (plantedNames.has(p.payload.species.toLowerCase()) ||
+            Boolean(p.payload.experienceRating) ||
+            Boolean(p.payload.experienceYieldNote))
+      )
+      .slice(0, 20)
+      .map((p) => `${p.title}${p.payload.experienceYieldNote ? `: ${p.payload.experienceYieldNote}` : ''}`);
+
+    return {
+      standort: REGIONAL_SOIL_WATER_REFERENCE.address,
+      datum: new Date().toISOString().slice(0, 10),
+      nutzer: activeIdentity,
+      wetter: weather
+        ? {
+            tempC: Math.round(weather.current.temp * 10) / 10,
+            minMaxC: `${Math.round(weather.today.tempMin)}/${Math.round(weather.today.tempMax)}`,
+            regenMm: weather.daily[0]?.precipSum,
+            warnung: weather.gardenAlerts[0]?.title || '',
+          }
+        : null,
+      aufUnserenBeeten: activePlantings.map(
+        (p) =>
+          `${p.payload.areaName || 'Beet'}: ${p.payload.plantName}${p.payload.variety ? ` (${p.payload.variety})` : ''} [${p.payload.status}]${p.payload.notes ? ` — ${p.payload.notes.slice(0, 60)}` : ''}`
+      ),
+      unsereFlaechen: areas
+        .filter((a) => !a.archived)
+        .slice(0, 15)
+        .map(
+          (a) =>
+            `${a.title} (${a.payload.areaType}${a.payload.currentUse ? `: ${a.payload.currentUse}` : ''}${a.payload.linkedItems?.length ? `, verknüpft: ${a.payload.linkedItems.join(', ')}` : ''})`
+        ),
+      unsereSortenNotizen: relevantPlantNotes,
+      saatgutKnapp: seeds
+        .filter((s) => !s.archived && s.payload.reorderNeeded)
+        .slice(0, 10)
+        .map((s) => s.title),
+      unsereTiere: activeAnimals.map(
+        (g) =>
+          `${g.title}: ${g.payload.count} Tiere (${g.payload.species}${g.payload.breed ? `, ${g.payload.breed}` : ''})`
+      ),
+      unsereFutterbestaende: feedStocks
+        .filter((f) => !f.archived)
+        .map((f) => `${f.title}: ${f.payload.quantityKg}kg (Min ${f.payload.minStockKg}kg)`),
+      unsereVorraete: activeInventory
+        .slice(0, 25)
+        .map((i) => `${i.title}: ${i.payload.quantity} ${i.payload.unit} [${i.payload.location}, ${i.payload.qualityStatus}]`),
+      unsereErnten: harvests
+        .filter((h) => !h.archived)
+        .slice(0, 12)
+        .map((h) => `${h.title}: ${h.payload.amount} ${h.payload.unit} (${h.payload.date})`),
+      unsereProjekte: projects
+        .filter((p) => !p.archived && p.payload.status !== 'Abgeschlossen')
+        .slice(0, 8)
+        .map((p) => `${p.title} (${p.payload.status})`),
+      unsereAufgaben: calendarEvents
+        .filter((c) => !c.archived && !c.payload.completed)
+        .slice(0, 12)
+        .map((c) => `${c.title} (${c.payload.date})`),
+      unsereErfahrung: erfahrungEntries
+        .slice(0, 6)
+        .map((k) => `${k.title}: ${k.payload.content.slice(0, 120)}`),
+    };
+  };
 
   const callAssistantEndpoint = async (cleanQ: string, historySlice: Array<{ role: 'user' | 'model'; text: string }>) => {
     const payloadStr = JSON.stringify({
@@ -252,12 +270,12 @@ export const HomesteadAssistantPanel: React.FC<{
 
   const quickPrompts = compact
     ? [
-        'Was steht bei diesem Wetter im Garten an?',
-        'Was passt jetzt als Nachkultur aufs Beet?',
+        'Was brauchen unsere aktuellen Beete bei diesem Wetter?',
+        'Was können wir aus unseren Vorräten kochen?',
       ]
     : [
-        'Was steht diese Woche bei dem Wetter in Mellenbach im Garten & Stall an?',
-        'Welche Rezepte passen zu unseren aktuellen Vorräten & Ernten?',
+        'Was steht bei diesem Wetter für unsere aktuellen Beete & Tiere an?',
+        'Welche Gerichte passen zu unseren vorhandenen Vorräten & Eiern?',
         'Prüfe unseren Saatgut- und Futterbestand auf knappe Reserven.',
       ];
 
@@ -265,15 +283,24 @@ export const HomesteadAssistantPanel: React.FC<{
 
   return (
     <div className={compact ? 'space-y-2' : 'space-y-3'}>
-      {!compact && (
+      {!compact ? (
         <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
-          <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
-            Hof-Assistent für Mellenbach-Glasbach (mit aktuellem Hof- & Wetterkontext)
+          <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+              Hof-Assistent für Mellenbach-Glasbach (nur euer echter Bestand)
+            </span>
+            <span className="text-[11px] font-mono-num text-[#3B6912] dark:text-[#BBE774]">
+              {activePlantings.length} auf Beeten · {activeAnimals.length} Tiergruppen · {activeInventory.length} Vorräte
+            </span>
           </div>
           <p>
-            Der Assistent kennt eure aktuellen Beete, Sorten, Vorräte, Tierbestände, Wetterdaten und Aufgaben. Vorgeschlagene Aktionen werden erst nach eurer Bestätigung gespeichert.
+            Der Assistent geht gezielt nur auf die Kulturen ein, die wirklich auf euren Beeten stehen, sowie auf eure Tiere, Vorräte und das aktuelle Schwarzatal-Wetter.
           </p>
+        </div>
+      ) : (
+        <div className="text-[10px] text-neutral-500 font-mono-num">
+          Fokus: {activePlantings.length} auf Beeten · {activeAnimals.length} Tiergruppen · {activeInventory.length} Vorräte
         </div>
       )}
 

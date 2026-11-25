@@ -251,7 +251,8 @@ export const ManagementView: React.FC = () => {
         (d) =>
           !d.archived &&
           d.id !== 'garden_map_schema_v1' &&
-          d.id !== 'dashboard_layout_shared_v1'
+          d.id !== 'dashboard_layout_shared_v1' &&
+          d.id !== 'meal_plan_shared_v1'
       ),
     [documents]
   );

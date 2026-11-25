@@ -5,10 +5,12 @@ import {
   Bird,
   Check,
   CloudSun,
+  Egg,
   Eye,
   EyeOff,
   Hammer,
   Plus,
+  ShoppingCart,
   SlidersHorizontal,
   Sparkles,
   Sprout,
@@ -39,6 +41,7 @@ export const DashboardView: React.FC = () => {
     shoppingItems,
     weather,
     setActiveModule,
+    createRecord,
     updateRecord,
     updatePersonalNotes,
     updateDashboardLayout,
@@ -47,6 +50,15 @@ export const DashboardView: React.FC = () => {
   } = useHomestead();
 
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [quickMode, setQuickMode] = useState<'eggs' | 'harvest' | 'clean' | 'shopping' | null>(null);
+  const [quickEggCount, setQuickEggCount] = useState<number>(4);
+  const [quickGroupId, setQuickGroupId] = useState<string>('');
+  const [quickHarvestCrop, setQuickHarvestCrop] = useState<string>('');
+  const [quickHarvestAmount, setQuickHarvestAmount] = useState<number>(0.5);
+  const [quickHarvestUnit, setQuickHarvestUnit] = useState<'kg' | 'g' | 'Stück' | 'Bund'>('kg');
+  const [quickShopTitle, setQuickShopTitle] = useState<string>('');
+  const [quickBusy, setQuickBusy] = useState(false);
+
   const [notesDraft, setNotesDraft] = useState(userProfile?.personalNotes ?? '');
   const [seeding, setSeeding] = useState(false);
   const [mobilePage, setMobilePage] = useState<'tasks' | 'assistant' | 'weather' | 'farm' | 'pantry' | 'notes'>('tasks');
@@ -137,19 +149,67 @@ export const DashboardView: React.FC = () => {
             Mellenbach-Glasbach · {currentPheno.phase} ({currentPheno.indicatorPlant})
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              const chickenGrp = activeAnimals.find((a) => a.payload.species === 'Hühner') || activeAnimals[0];
+              setQuickGroupId(chickenGrp?.id || '');
+              setQuickEggCount(4);
+              setQuickMode('eggs');
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-[#FFC814]/25 text-[#63390C] dark:text-[#FFD65A] text-xs font-semibold inline-flex items-center gap-1 hover:opacity-90 transition whitespace-nowrap"
+          >
+            <Egg className="w-3.5 h-3.5" />
+            + Eier
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const firstBed = activePlantings.find((p) => p.payload.status !== 'Abgeerntet');
+              setQuickHarvestCrop(firstBed?.payload.plantName || '');
+              setQuickHarvestAmount(0.5);
+              setQuickMode('harvest');
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-[#BBE774]/30 text-[#233A29] dark:text-[#BBE774] text-xs font-semibold inline-flex items-center gap-1 hover:opacity-90 transition whitespace-nowrap"
+          >
+            <Sprout className="w-3.5 h-3.5" />
+            + Ernte
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setQuickGroupId(activeAnimals[0]?.id || '');
+              setQuickMode('clean');
+            }}
+            className="px-2.5 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition whitespace-nowrap"
+          >
+            <Check className="w-3.5 h-3.5" />
+            + Stall
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setQuickShopTitle('');
+              setQuickMode('shopping');
+            }}
+            className="px-2.5 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition whitespace-nowrap"
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            + Einkauf
+          </button>
           <button
             type="button"
             onClick={() => setActiveModule('calendar')}
-            className="px-3 py-1.5 rounded-xl bg-[#233A29] text-white text-xs font-medium inline-flex items-center gap-1.5 hover:opacity-90 transition whitespace-nowrap"
+            className="px-2.5 py-1.5 rounded-xl bg-[#233A29] text-white text-xs font-medium inline-flex items-center gap-1 hover:opacity-90 transition whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
-            Aufgabe / Termin
+            Termin
           </button>
           <button
             type="button"
             onClick={() => setShowConfigModal(true)}
-            className="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition whitespace-nowrap"
+            className="px-2.5 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition whitespace-nowrap"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             Anordnung
@@ -459,12 +519,34 @@ export const DashboardView: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
-                      <div className="font-semibold text-neutral-900 dark:text-neutral-200 truncate">
-                        Im {currentMonthGuide.monthName}:
-                      </div>
-                      <p className="line-clamp-2">
-                        Anbau: {currentMonthGuide.sowingAndPlanting.slice(0, 2).join(', ')} · Ernte: {currentMonthGuide.harvest.slice(0, 2).join(', ')}
-                      </p>
+                      {(() => {
+                        const standing = activePlantings.filter((p) => p.payload.status !== 'Abgeerntet');
+                        if (standing.length === 0) {
+                          return (
+                            <>
+                              <div className="font-semibold text-neutral-900 dark:text-neutral-200 truncate">
+                                Im {currentMonthGuide.monthName}:
+                              </div>
+                              <p className="line-clamp-2">
+                                Noch keine Beete eingetragen · {currentMonthGuide.sowingAndPlanting.slice(0, 2).join(', ')}
+                              </p>
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <div className="font-semibold text-neutral-900 dark:text-neutral-200 truncate">
+                              Aktuell auf unseren Beeten:
+                            </div>
+                            <p className="line-clamp-2">
+                              {standing
+                                .slice(0, 5)
+                                .map((p) => `${p.payload.plantName} (${p.payload.areaName || 'Beet'})`)
+                                .join(' · ')}
+                            </p>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </section>
@@ -725,6 +807,303 @@ export const DashboardView: React.FC = () => {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* 1-Tap Schnellerfassung Modal ("Schmutzige-Hände-Modus") */}
+      <Modal
+        open={quickMode !== null}
+        onClose={() => setQuickMode(null)}
+        title={
+          quickMode === 'eggs'
+            ? 'Schnell-Erfassung: Eier sammeln'
+            : quickMode === 'harvest'
+            ? 'Schnell-Erfassung: Ernte wiegen'
+            : quickMode === 'clean'
+            ? 'Schnell-Erfassung: Stall gereinigt'
+            : 'Schnell-Erfassung: Einkauf merken'
+        }
+      >
+        {quickMode === 'eggs' && (
+          <div className="space-y-3 text-xs">
+            <div>
+              <label className="block font-medium mb-1">Tiergruppe</label>
+              <select
+                value={quickGroupId}
+                onChange={(e) => setQuickGroupId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-sm"
+              >
+                {activeAnimals.length === 0 && <option value="">Hühnerbestand</option>}
+                {activeAnimals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block font-medium mb-1">Anzahl Eier (1-Tap wählen oder anpassen)</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {[2, 4, 5, 6, 8, 10].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setQuickEggCount(num)}
+                    className={`px-3 py-2 rounded-xl border font-mono-num font-bold ${
+                      quickEggCount === num
+                        ? 'bg-[#233A29] text-white border-[#233A29]'
+                        : 'border-neutral-300 dark:border-neutral-700'
+                    }`}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min={1}
+                value={quickEggCount}
+                onChange={(e) => setQuickEggCount(Number(e.target.value) || 1)}
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm font-mono-num"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuickMode(null)}
+                className="px-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                disabled={quickBusy}
+                onClick={async () => {
+                  setQuickBusy(true);
+                  try {
+                    const grp = activeAnimals.find((g) => g.id === quickGroupId);
+                    const groupName = grp?.title || 'Hühner';
+                    await createRecord('animalLogs', `Eier · ${groupName}`, {
+                      groupId: grp?.id || '',
+                      groupName,
+                      logType: 'Eier',
+                      date: todayStr,
+                      quantity: quickEggCount,
+                      unit: 'Stück',
+                      details: 'Schnell-Erfassung vom Hof.',
+                    });
+                    pushToast('success', `${quickEggCount} Eier für ${groupName} eingetragen.`);
+                    setQuickMode(null);
+                  } finally {
+                    setQuickBusy(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#233A29] text-white font-semibold disabled:opacity-50"
+              >
+                {quickBusy ? 'Speichert…' : `${quickEggCount} Eier speichern`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {quickMode === 'harvest' && (
+          <div className="space-y-3 text-xs">
+            {activePlantings.filter((p) => p.payload.status !== 'Abgeerntet').length > 0 && (
+              <div>
+                <label className="block font-medium mb-1">Direkt vom Beet wählen</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {activePlantings
+                    .filter((p) => p.payload.status !== 'Abgeerntet')
+                    .slice(0, 8)
+                    .map((pl) => (
+                      <button
+                        key={pl.id}
+                        type="button"
+                        onClick={() => setQuickHarvestCrop(pl.payload.plantName)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs ${
+                          quickHarvestCrop === pl.payload.plantName
+                            ? 'bg-[#233A29] text-white border-[#233A29]'
+                            : 'border-neutral-300 dark:border-neutral-700'
+                        }`}
+                      >
+                        {pl.payload.plantName}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="block font-medium mb-1">Kultur / Erntegut *</label>
+              <input
+                type="text"
+                value={quickHarvestCrop}
+                onChange={(e) => setQuickHarvestCrop(e.target.value)}
+                placeholder="z.B. Tomaten, Salat, Erdbeeren"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-medium mb-1">Menge</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={quickHarvestAmount}
+                  onChange={(e) => setQuickHarvestAmount(Number(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm font-mono-num"
+                />
+              </div>
+              <div>
+                <label className="block font-medium mb-1">Einheit</label>
+                <select
+                  value={quickHarvestUnit}
+                  onChange={(e) => setQuickHarvestUnit(e.target.value as typeof quickHarvestUnit)}
+                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-sm"
+                >
+                  <option value="kg">kg</option>
+                  <option value="g">g</option>
+                  <option value="Stück">Stück</option>
+                  <option value="Bund">Bund</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuickMode(null)}
+                className="px-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                disabled={quickBusy || !quickHarvestCrop.trim()}
+                onClick={async () => {
+                  setQuickBusy(true);
+                  try {
+                    await createRecord('harvests', `${quickHarvestCrop.trim()} (${quickHarvestAmount} ${quickHarvestUnit})`, {
+                      plantId: '',
+                      plantName: quickHarvestCrop.trim(),
+                      variety: '',
+                      areaId: '',
+                      areaName: '',
+                      date: todayStr,
+                      amount: quickHarvestAmount,
+                      unit: quickHarvestUnit,
+                      quality: 'Sehr gut',
+                      allocations: { Frischverbrauch: quickHarvestAmount },
+                      notes: 'Schnell-Erfassung vom Hof.',
+                    });
+                    pushToast('success', `Ernte „${quickHarvestCrop.trim()}“ gespeichert.`);
+                    setQuickMode(null);
+                  } finally {
+                    setQuickBusy(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#233A29] text-white font-semibold disabled:opacity-50"
+              >
+                {quickBusy ? 'Speichert…' : 'Ernte speichern'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {quickMode === 'clean' && (
+          <div className="space-y-3 text-xs">
+            <p className="text-neutral-600 dark:text-neutral-400">
+              Welche Tiergruppe / welcher Stall wurde heute gereinigt?
+            </p>
+            {activeAnimals.length === 0 ? (
+              <p className="text-neutral-500">Noch keine Tiergruppen angelegt.</p>
+            ) : (
+              <div className="space-y-2">
+                {activeAnimals.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    disabled={quickBusy}
+                    onClick={async () => {
+                      setQuickBusy(true);
+                      try {
+                        await updateRecord(
+                          'animalGroups',
+                          g.id,
+                          g.title,
+                          { ...g.payload, lastCleanedDate: todayStr },
+                          g.updatedAtMs
+                        );
+                        await createRecord('animalLogs', `Stallreinigung · ${g.title}`, {
+                          groupId: g.id,
+                          groupName: g.title,
+                          logType: 'Reinigung',
+                          date: todayStr,
+                          quantity: 1,
+                          unit: 'Mal',
+                          details: 'Schnell-Erfassung: Stall gereinigt.',
+                        });
+                        pushToast('success', `Reinigung für ${g.title} eingetragen.`);
+                        setQuickMode(null);
+                      } finally {
+                        setQuickBusy(false);
+                      }
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-[#BBE774]/20 flex items-center justify-between font-semibold"
+                  >
+                    <span>{g.title}</span>
+                    <span className="text-neutral-500 font-normal">Zuletzt: {g.payload.lastCleanedDate || '—'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {quickMode === 'shopping' && (
+          <div className="space-y-3 text-xs">
+            <div>
+              <label className="block font-medium mb-1">Was fehlt auf dem Hof / in der Küche?</label>
+              <input
+                type="text"
+                value={quickShopTitle}
+                onChange={(e) => setQuickShopTitle(e.target.value)}
+                placeholder="z.B. Legemehl 25 kg, Pflanzenschilder, Essig"
+                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuickMode(null)}
+                className="px-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                disabled={quickBusy || !quickShopTitle.trim()}
+                onClick={async () => {
+                  setQuickBusy(true);
+                  try {
+                    await createRecord('shoppingItems', quickShopTitle.trim(), {
+                      category: 'Verbrauchsmaterial',
+                      quantity: 1,
+                      unit: 'Stück',
+                      source: 'Schnell-Erfassung',
+                      estimatedPriceEur: 0,
+                      purchased: false,
+                    });
+                    pushToast('success', `„${quickShopTitle.trim()}“ auf die Einkaufsliste gesetzt.`);
+                    setQuickMode(null);
+                  } finally {
+                    setQuickBusy(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#233A29] text-white font-semibold disabled:opacity-50"
+              >
+                {quickBusy ? 'Speichert…' : 'Auf Einkaufsliste'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

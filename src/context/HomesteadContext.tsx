@@ -67,6 +67,7 @@ import type {
   InventoryItemPayload,
   KnowledgePayload,
   MainModuleId,
+  MealPlanDayEntry,
   PingRecord,
   PlantingPayload,
   PlantPayload,
@@ -169,6 +170,8 @@ interface HomesteadContextValue {
   updateNotificationSettings: (settings: UserNotificationSettings) => Promise<void>;
   sharedDashboardLayout: DashboardCardConfig[];
   updateDashboardLayout: (layout: DashboardCardConfig[]) => Promise<void>;
+  sharedMealPlan: Record<string, MealPlanDayEntry>;
+  updateMealPlan: (plan: Record<string, MealPlanDayEntry>) => Promise<void>;
   requestPushPermission: () => Promise<{ granted: boolean; reason?: string }>;
 
   // Ping & Notifications
@@ -752,31 +755,104 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     emergencyConfig,
   ]);
 
-  // Generate smart notifications from weather alerts & overdue/today tasks
+  // Generate smart notifications from weather alerts, pantry MHD, and animal vaccination reminders
   useEffect(() => {
-    if (!weather || !userProfile) return;
-    const importantAlerts = weather.gardenAlerts.filter((a) => a.level !== 'info');
-    if (importantAlerts.length === 0) return;
-    setNotifications((prev) => {
-      const existingIds = new Set(prev.map((n) => n.id));
-      const additions: InAppNotification[] = [];
+    if (!userProfile) return;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayMs = new Date(`${todayIso}T12:00:00`).getTime();
+    const candidates: InAppNotification[] = [];
+
+    if (weather) {
+      const importantAlerts = weather.gardenAlerts.filter((a) => a.level !== 'info');
       for (const a of importantAlerts) {
-        const nid = `weather_${a.id}_${new Date().toISOString().slice(0, 10)}`;
-        if (!existingIds.has(nid)) {
-          additions.push({
-            id: nid,
-            category: 'weather',
-            priority: a.level === 'warning' ? 'emergency' : 'important',
-            title: a.title,
-            body: a.recommendation,
+        candidates.push({
+          id: `weather_${a.id}_${todayIso}`,
+          category: 'weather',
+          priority: a.level === 'warning' ? 'emergency' : 'important',
+          title: a.title,
+          body: a.recommendation,
+          timestampMs: Date.now(),
+          read: false,
+        });
+      }
+    }
+
+    const useSoonItems = inventoryItems.filter(
+      (i) => !i.archived && i.payload.quantity > 0 && i.payload.qualityStatus === 'Bald verbrauchen'
+    );
+    if (useSoonItems.length > 0) {
+      candidates.push({
+        id: `pantry_usessoon_${todayIso}`,
+        category: 'pantry',
+        priority: 'important',
+        title: `${useSoonItems.length} Vorrat/Vorräte bald verbrauchen`,
+        body: useSoonItems
+          .slice(0, 3)
+          .map((i) => `${i.title} (${i.payload.quantity} ${i.payload.unit})`)
+          .join(', '),
+        timestampMs: Date.now(),
+        read: false,
+      });
+    }
+
+    for (const grp of animalGroups.filter((g) => !g.archived)) {
+      if (grp.payload.lastNdVaccineDate) {
+        const interval = grp.payload.ndIntervalDays || 84;
+        const dueMs = new Date(`${grp.payload.lastNdVaccineDate}T12:00:00`).getTime() + interval * 86400000;
+        const daysUntil = Math.round((dueMs - todayMs) / 86400000);
+        if (daysUntil <= 14) {
+          candidates.push({
+            id: `animal_nd_${grp.id}_${todayIso}`,
+            category: 'animals',
+            priority: daysUntil <= 0 ? 'emergency' : 'important',
+            title: `ND-Impfung (${grp.title}) ${daysUntil <= 0 ? 'fällig!' : `in ${daysUntil} Tagen`}`,
+            body: `Pflichtimpfung Newcastle-Krankheit prüfen & im Tiermodul dokumentieren.`,
             timestampMs: Date.now(),
             read: false,
           });
         }
       }
-      return additions.length > 0 ? [...additions, ...prev].slice(0, 35) : prev;
+      if (grp.payload.lastRhdVaccineDate) {
+        const interval = grp.payload.rhdIntervalDays || 365;
+        const dueMs = new Date(`${grp.payload.lastRhdVaccineDate}T12:00:00`).getTime() + interval * 86400000;
+        const daysUntil = Math.round((dueMs - todayMs) / 86400000);
+        if (daysUntil <= 14) {
+          candidates.push({
+            id: `animal_rhd_${grp.id}_${todayIso}`,
+            category: 'animals',
+            priority: daysUntil <= 0 ? 'emergency' : 'important',
+            title: `RHD1/RHD2-Impfung (${grp.title}) ${daysUntil <= 0 ? 'fällig!' : `in ${daysUntil} Tagen`}`,
+            body: `Jährliche Kaninchen-Schutzimpfung auffrischen und im Tiermodul eintragen.`,
+            timestampMs: Date.now(),
+            read: false,
+          });
+        }
+      }
+    }
+
+    if (candidates.length === 0) return;
+    setNotifications((prev) => {
+      const existingIds = new Set(prev.map((n) => n.id));
+      const additions = candidates.filter((c) => !existingIds.has(c.id));
+      if (additions.length === 0) return prev;
+      if (
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        Notification.permission === 'granted' &&
+        userProfile.notificationSettings?.instantPush
+      ) {
+        const urgent = additions.find((a) => a.priority === 'emergency');
+        if (urgent) {
+          try {
+            new Notification(urgent.title, { body: urgent.body, tag: urgent.id });
+          } catch {
+            // Ignore browser notification constraints inside iframes
+          }
+        }
+      }
+      return [...additions, ...prev].slice(0, 35);
     });
-  }, [weather, userProfile]);
+  }, [weather, inventoryItems, animalGroups, userProfile]);
 
   const writeAuditLog = useCallback(
     async (
@@ -1063,7 +1139,6 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (existingDoc) {
         await updateDoc(doc(db, 'documents', SHARED_DASHBOARD_LAYOUT_DOC_ID), {
           title: 'Gemeinsame Dashboard-Reihenfolge',
-          archived: false,
           payload,
           updatedBy: firebaseUser.uid,
           updatedAt: serverTimestamp(),
@@ -1084,6 +1159,52 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       pushToast('success', 'Dashboard-Reihenfolge für alle gespeichert.');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `documents/${SHARED_DASHBOARD_LAYOUT_DOC_ID}`);
+    }
+  };
+
+  const MEAL_PLAN_DOC_ID = 'meal_plan_shared_v1';
+
+  const sharedMealPlan = useMemo<Record<string, MealPlanDayEntry>>(() => {
+    const planDoc = documents.find((d) => d.id === MEAL_PLAN_DOC_ID && !d.archived);
+    return planDoc?.payload?.mealPlan || {};
+  }, [documents]);
+
+  const updateMealPlan = async (plan: Record<string, MealPlanDayEntry>) => {
+    if (!firebaseUser || !userProfile) return;
+    const payload: DocumentPayload = {
+      docType: 'Sonstiges',
+      linkedModule: 'Vorrat',
+      date: new Date().toISOString().slice(0, 10),
+      fileName: '',
+      externalUrl: '',
+      notes: 'Gemeinsamer Wochenplan aus Vorrat & Garten für Nico & Chris.',
+      mealPlan: plan,
+    };
+    const existingDoc = documents.find((d) => d.id === MEAL_PLAN_DOC_ID);
+    try {
+      if (existingDoc) {
+        await updateDoc(doc(db, 'documents', MEAL_PLAN_DOC_ID), {
+          title: 'Gemeinsamer Wochenplan',
+          payload,
+          updatedBy: firebaseUser.uid,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await setDoc(doc(db, 'documents', MEAL_PLAN_DOC_ID), {
+          homesteadId: 'mellenbach-hof',
+          module: 'documents',
+          title: 'Gemeinsamer Wochenplan',
+          archived: false,
+          payload,
+          createdBy: firebaseUser.uid,
+          updatedBy: firebaseUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      pushToast('success', 'Wochenplan gespeichert.');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `documents/${MEAL_PLAN_DOC_ID}`);
     }
   };
 
@@ -1494,6 +1615,8 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updateNotificationSettings,
         sharedDashboardLayout,
         updateDashboardLayout,
+        sharedMealPlan,
+        updateMealPlan,
         requestPushPermission,
         pings,
         pingCooldownSec,

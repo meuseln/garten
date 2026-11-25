@@ -10,9 +10,11 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Snowflake,
   Sparkles,
   Sprout,
   Star,
+  ThermometerSun,
   Trees,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
@@ -440,6 +442,85 @@ export const CultivationView: React.FC = () => {
   const seedPagination = usePagination(activeSeeds, 6);
   const currentMonthGuide = MONTHLY_GARDEN_CALENDAR[new Date().getMonth()] || MONTHLY_GARDEN_CALENDAR[0];
 
+  const isFrostSensitiveCrop = (name: string): boolean =>
+    /tomate|paprika|chili|gurke|zucchini|kürbis|bohne|basilikum|mais|melone|aubergine|physalis/i.test(name);
+
+  const currentStandingPlantings = useMemo(
+    () => activePlantings.filter((p) => p.payload.status !== 'Abgeerntet'),
+    [activePlantings]
+  );
+
+  const groupedActiveBeds = useMemo(() => {
+    const map = new Map<string, HomesteadRecord<PlantingPayload>[]>();
+    for (const pl of currentStandingPlantings) {
+      const key = pl.payload.areaName || 'Gartenbeet';
+      const list = map.get(key) || [];
+      list.push(pl);
+      map.set(key, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [currentStandingPlantings]);
+
+  const scheduleFrostAndPreCultureTasks = async () => {
+    if (currentStandingPlantings.length === 0) {
+      pushToast('warning', 'Trage zuerst unter „Beete“ ein, was bei euch wächst.');
+      return;
+    }
+    const year = new Date().getFullYear();
+    let count = 0;
+    for (const pl of currentStandingPlantings) {
+      const frostSensitive = isFrostSensitiveCrop(pl.payload.plantName);
+      if (frostSensitive) {
+        await createRecord('calendarEvents', `Vorziehen: ${pl.payload.plantName} (${pl.payload.areaName || 'Beet'})`, {
+          eventType: 'task',
+          description: `Fensterbank / Anzuchtplatte vorbereiten für ${pl.payload.plantName}${pl.payload.variety ? ` (${pl.payload.variety})` : ''}.`,
+          date: `${year}-03-20`,
+          startTime: '09:00',
+          endTime: '09:30',
+          category: 'Aussaat',
+          assignee: activeIdentity || 'Gemeinsam',
+          recurrence: 'none',
+          reminderMinutes: 60,
+          areaName: pl.payload.areaName,
+          completed: false,
+          notes: 'Automatisch aus Vorzucht-/Eisheiligen-Checkliste Schwarzatal.',
+        });
+        await createRecord('calendarEvents', `Auspflanzen (nach Eisheiligen): ${pl.payload.plantName}`, {
+          eventType: 'task',
+          description: `In Schwarzatal (~500 m) erst nach Spätfrost-Gefahr ins Beet „${pl.payload.areaName || 'Garten'}“ setzen.`,
+          date: `${year}-05-20`,
+          startTime: '10:00',
+          endTime: '11:00',
+          category: 'Pflanzung',
+          assignee: activeIdentity || 'Gemeinsam',
+          recurrence: 'none',
+          reminderMinutes: 120,
+          areaName: pl.payload.areaName,
+          completed: false,
+          notes: 'Eisheiligen-Schutztermin (Schwarzatal).',
+        });
+        count += 2;
+      } else {
+        await createRecord('calendarEvents', `Direktsaat / Beetstart: ${pl.payload.plantName}`, {
+          eventType: 'task',
+          description: `Robuste Kultur für „${pl.payload.areaName || 'Garten'}“ ab Mitte April direkt ins Beet bringen.`,
+          date: `${year}-04-15`,
+          startTime: '10:00',
+          endTime: '10:45',
+          category: 'Aussaat',
+          assignee: activeIdentity || 'Gemeinsam',
+          recurrence: 'none',
+          reminderMinutes: 60,
+          areaName: pl.payload.areaName,
+          completed: false,
+          notes: 'Automatisch aus Vorzucht-/Eisheiligen-Checkliste Schwarzatal.',
+        });
+        count += 1;
+      }
+    }
+    pushToast('success', `${count} Vorzucht- & Eisheiligen-Termine für ${year} im Kalender angelegt.`);
+  };
+
   return (
     <div className="space-y-6">
       <ModuleHeader
@@ -756,6 +837,77 @@ export const CultivationView: React.FC = () => {
             </div>
           </div>
 
+          {/* Vorzieh- & Eisheiligen-Checkliste (Schwarzatal ~500m) */}
+          <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-bold flex items-center gap-2">
+                  <Snowflake className="w-4 h-4 text-[#597CD4]" />
+                  Vorzucht- &amp; Eisheiligen-Checkliste (Schwarzatal ~500 m)
+                </h3>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                  Automatisch geprüft für eure aktuell eingetragenen Kulturen ({currentStandingPlantings.length}): Spätfröste sind im Schiefergebirge bis ca. 20. Mai möglich.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={scheduleFrostAndPreCultureTasks}
+                className="px-3.5 py-2 rounded-xl bg-[#597CD4] text-white text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 hover:opacity-90"
+              >
+                <CalendarPlus className="w-4 h-4" />
+                Vorzucht &amp; Eisheiligen in Kalender
+              </button>
+            </div>
+
+            {currentStandingPlantings.length === 0 ? (
+              <p className="text-xs text-neutral-500">
+                Tragt unter „Beete &amp; Pflanzfolge“ ein, was ihr anbaut — dann teilt diese Checkliste eure Kulturen automatisch in Vorzucht (ab 20. Mai raus) und Direktsaat ein.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="p-3.5 rounded-xl bg-[#597CD4]/10 border border-[#597CD4]/30 space-y-1.5">
+                  <div className="font-semibold text-[#1E3A8A] dark:text-[#93C5FD] flex items-center gap-1.5">
+                    <ThermometerSun className="w-4 h-4" />
+                    Wärmeliebend · Vorziehen &amp; erst nach Eisheiligen (~20. Mai) raus
+                  </div>
+                  {currentStandingPlantings.filter((p) => isFrostSensitiveCrop(p.payload.plantName)).length === 0 ? (
+                    <p className="text-neutral-500">Aktuell keine frostempfindlichen Kulturen eingetragen.</p>
+                  ) : (
+                    <ul className="space-y-1 text-neutral-700 dark:text-neutral-300">
+                      {currentStandingPlantings
+                        .filter((p) => isFrostSensitiveCrop(p.payload.plantName))
+                        .map((p) => (
+                          <li key={`frost-${p.id}`}>
+                            • <strong>{p.payload.plantName}</strong> ({p.payload.areaName || 'Beet'}) — bei Frost unter +2 °C schützen
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-[#BBE774]/18 border border-[#65A30D]/30 space-y-1.5">
+                  <div className="font-semibold text-[#233A29] dark:text-[#BBE774] flex items-center gap-1.5">
+                    <Sprout className="w-4 h-4" />
+                    Robust / Frosthart · Ab April direkt ins Beet
+                  </div>
+                  {currentStandingPlantings.filter((p) => !isFrostSensitiveCrop(p.payload.plantName)).length === 0 ? (
+                    <p className="text-neutral-500">Aktuell keine robusten Direktsaat-Kulturen eingetragen.</p>
+                  ) : (
+                    <ul className="space-y-1 text-neutral-700 dark:text-neutral-300">
+                      {currentStandingPlantings
+                        .filter((p) => !isFrostSensitiveCrop(p.payload.plantName))
+                        .map((p) => (
+                          <li key={`hardy-${p.id}`}>
+                            • <strong>{p.payload.plantName}</strong> ({p.payload.areaName || 'Beet'}) — verträgt leichte Schiefergebirgs-Fröste
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {phasePagination.pageItems.map((ph) => (
               <div
@@ -892,6 +1044,82 @@ export const CultivationView: React.FC = () => {
               </div>
             </form>
           </section>
+
+          {/* Schnelle Bestands-Tafel: Was steht aktuell auf unseren Beeten? */}
+          {groupedActiveBeds.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-base font-semibold flex items-center gap-2">
+                    <Sprout className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+                    Aktueller Beet-Bestand ({currentStandingPlantings.length} aktive Kulturen)
+                  </h2>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Schnell einsehen, was wo wächst — genau diese Kulturen nutzt der Hof-Assistent für seine Tipps.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {groupedActiveBeds.map(([areaName, list]) => (
+                  <div
+                    key={`bed-board-${areaName}`}
+                    className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-2">
+                      <h3 className="font-display text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                        {areaName}
+                      </h3>
+                      <span className="text-[11px] font-mono-num text-neutral-500">
+                        {list.length} {list.length === 1 ? 'Kultur' : 'Kulturen'}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {list.map((pl) => (
+                        <div
+                          key={`chip-${pl.id}`}
+                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412] text-xs"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-semibold truncate block">
+                              {pl.payload.plantName}
+                              {pl.payload.variety ? ` · ${pl.payload.variety}` : ''}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const nextStatus: PlantingPayload['status'] =
+                                pl.payload.status === 'Gepflanzt' || pl.payload.status === 'Ausgesät'
+                                  ? 'Erntereif'
+                                  : pl.payload.status === 'Erntereif'
+                                  ? 'Abgeerntet'
+                                  : 'Gepflanzt';
+                              await updateRecord(
+                                'plantings',
+                                pl.id,
+                                pl.title,
+                                { ...pl.payload, status: nextStatus },
+                                pl.updatedAtMs
+                              );
+                              pushToast('info', `${pl.payload.plantName}: Status → ${nextStatus}`);
+                            }}
+                            title="Klicken zum Status wechseln"
+                            className={`px-2 py-0.5 rounded font-medium text-[11px] shrink-0 transition ${
+                              pl.payload.status === 'Erntereif'
+                                ? 'bg-[#FFC814]/30 text-[#7A4400] dark:text-[#FFD65A]'
+                                : 'bg-[#BBE774]/25 text-[#233A29] dark:text-[#BBE774]'
+                            }`}
+                          >
+                            {pl.payload.status}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {activePlantings.length === 0 ? (
             <EmptyState

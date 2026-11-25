@@ -2,11 +2,14 @@ import React, { useMemo, useState } from 'react';
 import {
   Archive,
   BookOpen,
+  CalendarPlus,
   CheckCircle2,
   Database,
   Edit3,
+  Egg,
   HeartPulse,
   Plus,
+  ShieldCheck,
   ShoppingCart,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
@@ -41,8 +44,15 @@ export const AnimalsView: React.FC = () => {
     pushToast,
   } = useHomestead();
 
-  const [tab, setTab] = useState<'groups' | 'production' | 'feed' | 'health'>('groups');
+  const [tab, setTab] = useState<'groups' | 'production' | 'feed' | 'breeding' | 'health'>('groups');
   const [seedingRefs, setSeedingRefs] = useState(false);
+
+  // Brut- & Deck-Rechner state
+  const [breedMode, setBreedMode] = useState<'chicken' | 'rabbit'>('chicken');
+  const [breedStartDate, setBreedStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [breedGroupId, setBreedGroupId] = useState('');
+  const [breedNote, setBreedNote] = useState('');
+  const [breedSaving, setBreedSaving] = useState(false);
   const [groupModal, setGroupModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<HomesteadRecord<AnimalGroupPayload> | null>(null);
   const [groupForm, setGroupForm] = useState<AnimalGroupPayload>({
@@ -186,6 +196,119 @@ export const AnimalsView: React.FC = () => {
     pushToast('success', `${f.payload.feedName} auf die Einkaufsliste gesetzt.`);
   };
 
+  const addDaysIso = (baseIso: string, days: number): string => {
+    const d = new Date(`${baseIso}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const breedingMilestones = useMemo(() => {
+    if (breedMode === 'chicken') {
+      return [
+        { day: 7, title: '1. Schieren (Hühnereier)', desc: 'Mit Schierlampe Adernnetz prüfen, unbefruchtete Eier aussortieren.' },
+        { day: 14, title: '2. Schieren (Entwicklung)', desc: 'Embryo-Wachstum prüfen, abgestorbene Eier entfernen.' },
+        { day: 18, title: 'Umlegen / Brut-Endphase', desc: 'Eier nicht mehr wenden, Luftfeuchte auf ca. 65–75 % erhöhen.' },
+        { day: 21, title: 'Schlupftag Hühnerküken', desc: 'Brüter/Glucke möglichst ruhig lassen, Wasser flach mit Steinen sichern.' },
+        { day: 28, title: 'Küken-Check (Woche 1)', desc: 'Wärmeplatte, Kükenstarter & saubere Einstreu kontrollieren.' },
+      ].map((m) => ({ ...m, date: addDaysIso(breedStartDate, m.day) }));
+    }
+    return [
+      { day: 25, title: 'Nestbox & Stroh vorbereiten (Kaninchen)', desc: 'Saubere Wurfkiste mit viel trockenem Stroh in die Bucht stellen.' },
+      { day: 30, title: 'Erwarteter Wurftag (28–32 Tage)', desc: 'Häsin in Ruhe lassen, frisches Wasser & Kraftfutter bereitstellen.' },
+      { day: 32, title: 'Vorsichtige Nestkontrolle', desc: 'Mit Geruch der Häsin an den Händen kurz zählen & kalte Jungtiere prüfen.' },
+      { day: 49, title: 'Jungtiere fressen mit (7 Wochen)', desc: 'Heu & Kräuter gut zugänglich halten, Häsin bei Bedarf entlasten.' },
+      { day: 56, title: 'Absetzen & Geschlechter-Check (8 Wochen)', desc: 'Absetzen je nach Wurfstärke (6–8 Wochen) vorbereiten.' },
+      { day: 84, title: 'Geschlechter trennen (12 Wochen)', desc: 'Rammler und Häsinnen spätestens ab Woche 12 getrennt setzen.' },
+    ].map((m) => ({ ...m, date: addDaysIso(breedStartDate, m.day) }));
+  }, [breedMode, breedStartDate]);
+
+  const scheduleBreedingMilestones = async () => {
+    setBreedSaving(true);
+    try {
+      const grp = activeGroups.find((g) => g.id === breedGroupId);
+      const labelSuffix = breedNote.trim() || grp?.title || (breedMode === 'chicken' ? 'Hühnerbrut' : 'Kaninchenwurf');
+      for (const m of breedingMilestones) {
+        await createRecord('calendarEvents', `${m.title} · ${labelSuffix}`, {
+          eventType: 'task',
+          description: m.desc,
+          date: m.date,
+          startTime: '09:00',
+          endTime: '09:30',
+          category: 'Tierpflege',
+          assignee: 'Gemeinsam',
+          recurrence: 'none',
+          reminderMinutes: 60,
+          areaId: grp?.payload.areaId || '',
+          areaName: grp?.payload.areaName || '',
+          completed: false,
+          notes: `Automatisch aus Brut-/Deck-Rechner (${breedMode === 'chicken' ? 'Hühner 21T' : 'Kaninchen 30T'}).`,
+        });
+      }
+      if (grp) {
+        await createRecord('animalLogs', `Zuchtstart · ${grp.title}`, {
+          groupId: grp.id,
+          groupName: grp.title,
+          logType: 'Nachwuchs',
+          date: breedStartDate,
+          quantity: 1,
+          unit: 'Ansatz',
+          details: `${breedMode === 'chicken' ? 'Brutbeginn' : 'Decktag'}: ${labelSuffix}`,
+        });
+      }
+      pushToast('success', `${breedingMilestones.length} Zucht- & Brut-Termine in den Kalender eingetragen.`);
+    } finally {
+      setBreedSaving(false);
+    }
+  };
+
+  const recordVaccineToday = async (
+    g: HomesteadRecord<AnimalGroupPayload>,
+    kind: 'ND' | 'RHD',
+    intervalDays: number
+  ) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const nextDue = addDaysIso(today, intervalDays);
+    const updatedPayload: AnimalGroupPayload =
+      kind === 'ND'
+        ? { ...g.payload, lastNdVaccineDate: today, ndIntervalDays: intervalDays }
+        : { ...g.payload, lastRhdVaccineDate: today, rhdIntervalDays: intervalDays };
+
+    await updateRecord('animalGroups', g.id, g.title, updatedPayload, g.updatedAtMs);
+    await createRecord('animalLogs', `${kind}-Impfung · ${g.title}`, {
+      groupId: g.id,
+      groupName: g.title,
+      logType: 'Impfung',
+      date: today,
+      quantity: g.payload.count,
+      unit: 'Tiere',
+      details: `${kind === 'ND' ? 'Newcastle-Krankheit (ND) Pflichtimpfung' : 'RHD1/RHD2-Schutzimpfung'} dokumentiert. Nächste Fälligkeit: ${nextDue}.`,
+      treatment: kind === 'ND' ? 'ND-Impfstoff' : 'RHD1/RHD2-Impfstoff',
+    });
+    await createRecord(
+      'calendarEvents',
+      `${kind}-Impfung fällig: ${g.title}`,
+      {
+        eventType: 'task',
+        description:
+          kind === 'ND'
+            ? 'Pflichtimpfung Newcastle-Krankheit (Thüringen) auffrischen und beim Tierarzt/Verein bescheinigen lassen.'
+            : 'Jährliche RHD1/RHD2-Schutzimpfung beim Tierarzt auffrischen.',
+        date: nextDue,
+        startTime: '09:00',
+        endTime: '10:00',
+        category: 'Tierarzt',
+        assignee: 'Gemeinsam',
+        recurrence: 'none',
+        reminderMinutes: 1440,
+        areaId: g.payload.areaId || '',
+        areaName: g.payload.areaName || '',
+        completed: false,
+        notes: `Automatische Impf-Erinnerung (Intervall ${intervalDays} Tage).`,
+      }
+    );
+    pushToast('success', `${kind}-Impfung eingetragen & nächste Erinnerung (${nextDue}) im Kalender gespeichert.`);
+  };
+
   return (
     <div className="space-y-6">
       <ModuleHeader
@@ -245,6 +368,7 @@ export const AnimalsView: React.FC = () => {
           { id: 'groups', label: `Tiergruppen (${activeGroups.length})` },
           { id: 'production', label: `Produktion & Eier (${totalEggs30Days} / 30T)` },
           { id: 'feed', label: `Futter (${activeFeed.length})` },
+          { id: 'breeding', label: 'Brut, Zucht & Impfen' },
           { id: 'health', label: 'Gesundheit & Tierarzt' },
         ]}
       />
@@ -546,6 +670,217 @@ export const AnimalsView: React.FC = () => {
               />
             </>
           )}
+        </div>
+      )}
+
+      {tab === 'breeding' && (
+        <div className="space-y-6">
+          {/* Brut- & Deck-Rechner */}
+          <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+            <div className="h-1.5 w-full bg-gradient-to-r from-[#D97706] via-[#FFC814] to-[#BBE774]" />
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-base font-bold flex items-center gap-2">
+                    <Egg className="w-4 h-4 text-[#D97706]" />
+                    Brut- &amp; Deck-Rechner (1-Klick → Kalender)
+                  </h2>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Startdatum wählen — alle wichtigen Meilensteine werden automatisch in euren gemeinsamen Hof-Kalender eingetragen.
+                  </p>
+                </div>
+                <div className="flex rounded-xl border border-neutral-200 dark:border-neutral-700 p-1 bg-[#F7F7F5] dark:bg-[#0F1412] w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setBreedMode('chicken')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      breedMode === 'chicken' ? 'bg-[#233A29] text-white' : 'text-neutral-600 dark:text-neutral-300'
+                    }`}
+                  >
+                    Hühner-Brut (21 T.)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBreedMode('rabbit')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      breedMode === 'rabbit' ? 'bg-[#233A29] text-white' : 'text-neutral-600 dark:text-neutral-300'
+                    }`}
+                  >
+                    Kaninchen-Deckung (30 T.)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1">
+                    {breedMode === 'chicken' ? 'Brutbeginn / Einlegetag' : 'Decktag'}
+                  </label>
+                  <input
+                    type="date"
+                    value={breedStartDate}
+                    onChange={(e) => setBreedStartDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs font-mono-num"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Tiergruppe (optional)</label>
+                  <select
+                    value={breedGroupId}
+                    onChange={(e) => setBreedGroupId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-xs"
+                  >
+                    <option value="">Ohne Zuordnung…</option>
+                    {activeGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.title} ({g.payload.species})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Bezeichnung / Notiz</label>
+                  <input
+                    type="text"
+                    value={breedNote}
+                    onChange={(e) => setBreedNote(e.target.value)}
+                    placeholder={breedMode === 'chicken' ? 'z.B. Glucke Berta · 8 Eier' : 'z.B. Häsin Lotta × Rammler'}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {breedingMilestones.map((m) => (
+                  <div
+                    key={m.day}
+                    className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412] border border-neutral-200 dark:border-neutral-800 text-xs space-y-1"
+                  >
+                    <div className="flex items-center justify-between font-mono-num text-[11px] text-[#3B6912] dark:text-[#BBE774] font-semibold">
+                      <span>Tag {m.day}</span>
+                      <span>{m.date}</span>
+                    </div>
+                    <div className="font-semibold text-neutral-900 dark:text-neutral-100">{m.title}</div>
+                    <div className="text-neutral-600 dark:text-neutral-400">{m.desc}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={breedSaving}
+                  onClick={scheduleBreedingMilestones}
+                  className="px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+                >
+                  <CalendarPlus className="w-4 h-4" />
+                  {breedSaving
+                    ? 'Lege Termine an…'
+                    : `Alle ${breedingMilestones.length} Termine in Hof-Kalender anlegen`}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Thüringen Pflicht- & Impferinnerungen */}
+          <section className="space-y-3">
+            <div className="p-3.5 rounded-xl bg-[#BBE774]/18 border border-[#65A30D]/35 text-xs flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-[#233A29] dark:text-[#BBE774] shrink-0 mt-0.5" />
+              <div>
+                <strong>Thüringen Pflicht- &amp; Impfhinweis:</strong> Hühner unterliegen in Deutschland der{' '}
+                <strong>Newcastle-Krankheit (ND)-Impfpflicht</strong> (auch in Hobbyhaltung, meist alle 6–12 Wochen per Trinkwasser über Verein/Tierarzt) sowie der Anmeldung bei Veterinärsamt &amp; Tierseuchenkasse Thüringen. Bei Kaninchen empfiehlt sich der jährliche Schutz gegen <strong>RHD1/RHD2</strong>.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeGroups
+                .filter((g) => g.payload.species === 'Hühner' || g.payload.species === 'Kaninchen')
+                .map((g) => {
+                  const isChicken = g.payload.species === 'Hühner';
+                  const lastDate = isChicken ? g.payload.lastNdVaccineDate : g.payload.lastRhdVaccineDate;
+                  const interval = isChicken
+                    ? g.payload.ndIntervalDays || 84
+                    : g.payload.rhdIntervalDays || 365;
+                  const nextDate = lastDate ? addDaysIso(lastDate, interval) : null;
+                  const daysLeft = nextDate
+                    ? Math.round(
+                        (new Date(`${nextDate}T12:00:00`).getTime() -
+                          new Date(`${new Date().toISOString().slice(0, 10)}T12:00:00`).getTime()) /
+                          86400000
+                      )
+                    : null;
+
+                  return (
+                    <div
+                      key={`vax-${g.id}`}
+                      className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 space-y-3 text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] text-neutral-500">
+                            {isChicken ? 'ND-Pflichtimpfung (Hühner)' : 'RHD1/RHD2-Impfung (Kaninchen)'}
+                          </div>
+                          <h3 className="font-display text-sm font-bold">{g.title}</h3>
+                        </div>
+                        {daysLeft !== null && (
+                          <span
+                            className={`px-2 py-0.5 rounded font-mono-num font-semibold text-[11px] ${
+                              daysLeft <= 0
+                                ? 'bg-[#CF6432]/15 text-[#CF6432]'
+                                : daysLeft <= 14
+                                ? 'bg-[#FFC814]/25 text-[#7A4400] dark:text-[#FFD65A]'
+                                : 'bg-[#BBE774]/25 text-[#233A29] dark:text-[#BBE774]'
+                            }`}
+                          >
+                            {daysLeft <= 0 ? `Fällig (${Math.abs(daysLeft)} T. drüber)` : `Noch ${daysLeft} Tage`}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
+                        <div>
+                          <span className="text-neutral-500 block">Letzte Impfung</span>
+                          <span className="font-mono-num font-semibold">{lastDate || 'Noch nicht erfasst'}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block">Nächste Fälligkeit</span>
+                          <span className="font-mono-num font-semibold">{nextDate || '—'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {isChicken ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => recordVaccineToday(g, 'ND', 84)}
+                              className="px-3 py-1.5 rounded-lg bg-[#233A29] text-white font-semibold hover:opacity-90"
+                            >
+                              ND heute (12-Wo.-Rhythmus)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => recordVaccineToday(g, 'ND', 42)}
+                              className="px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 font-medium"
+                            >
+                              ND (6-Wo.)
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => recordVaccineToday(g, 'RHD', 365)}
+                            className="px-3 py-1.5 rounded-lg bg-[#233A29] text-white font-semibold hover:opacity-90"
+                          >
+                            RHD1/RHD2 heute dokumentieren (1 Jahr)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </section>
         </div>
       )}
 

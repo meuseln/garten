@@ -217,6 +217,10 @@ export interface AnimalGroupPayload {
   lastCleanedDate: string;
   notes: string;
   imageUrl?: string;
+  lastNdVaccineDate?: string;
+  ndIntervalDays?: number;
+  lastRhdVaccineDate?: string;
+  rhdIntervalDays?: number;
 }
 
 export interface AnimalLogPayload {
@@ -484,6 +488,12 @@ export interface GardenMapItem {
   points?: Array<{ x: number; y: number }>;
 }
 
+export interface MealPlanDayEntry {
+  meal: string;
+  usesInventory?: string;
+  notes?: string;
+}
+
 export interface DocumentPayload {
   docType: 'Rechnung' | 'Bauplan' | 'Bedienungsanleitung' | 'Tierunterlage' | 'Rezept' | 'Bodenanalyse' | 'Pflanzplan' | 'Grundstück' | 'Sonstiges';
   linkedModule: string;
@@ -493,6 +503,7 @@ export interface DocumentPayload {
   notes: string;
   mapItems?: GardenMapItem[];
   sharedDashboardLayout?: DashboardCardConfig[];
+  mealPlan?: Record<string, MealPlanDayEntry>;
 }
 
 export interface EmergencyConfigPayload {
