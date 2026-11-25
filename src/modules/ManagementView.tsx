@@ -246,7 +246,13 @@ export const ManagementView: React.FC = () => {
   const activeEquipment = useMemo(() => equipment.filter((e) => !e.archived), [equipment]);
   const activeShopping = useMemo(() => shoppingItems.filter((s) => !s.archived), [shoppingItems]);
   const activeDocuments = useMemo(
-    () => documents.filter((d) => !d.archived && d.id !== 'garden_map_schema_v1'),
+    () =>
+      documents.filter(
+        (d) =>
+          !d.archived &&
+          d.id !== 'garden_map_schema_v1' &&
+          d.id !== 'dashboard_layout_shared_v1'
+      ),
     [documents]
   );
 

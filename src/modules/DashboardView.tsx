@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -17,14 +17,14 @@ import {
 import { DEFAULT_DASHBOARD_LAYOUT, useHomestead } from '../context/HomesteadContext';
 import { describeWeatherCode } from '../lib/weather';
 import { MONTHLY_GARDEN_CALENDAR, PHENOLOGICAL_PHASES } from '../data/botanicalCatalog';
-import { Modal, ModuleHeader, SegmentedTabs } from '../components/ui/SharedUI';
+import { Modal, SegmentedTabs } from '../components/ui/SharedUI';
 import { HomesteadAssistantPanel } from '../components/assistant/HomesteadAssistantPanel';
-import type { DashboardCardConfig } from '../types/homestead';
 
 export const DashboardView: React.FC = () => {
   const {
     activeIdentity,
     userProfile,
+    sharedDashboardLayout,
     areas,
     plants,
     plantings,
@@ -51,15 +51,11 @@ export const DashboardView: React.FC = () => {
   const [seeding, setSeeding] = useState(false);
   const [mobilePage, setMobilePage] = useState<'tasks' | 'assistant' | 'weather' | 'farm' | 'pantry' | 'notes'>('tasks');
 
-  const layout: DashboardCardConfig[] = useMemo(() => {
-    const saved =
-      userProfile?.dashboardLayout && userProfile.dashboardLayout.length > 0
-        ? userProfile.dashboardLayout
-        : DEFAULT_DASHBOARD_LAYOUT;
-    const savedIds = new Set(saved.map((c) => c.id));
-    const missing = DEFAULT_DASHBOARD_LAYOUT.filter((d) => !savedIds.has(d.id));
-    return [...saved, ...missing].sort((a, b) => a.priority - b.priority);
-  }, [userProfile?.dashboardLayout]);
+  useEffect(() => {
+    setNotesDraft(userProfile?.personalNotes ?? '');
+  }, [userProfile?.personalNotes]);
+
+  const layout = sharedDashboardLayout;
 
   const activeAreas = areas.filter((a) => !a.archived);
   const activePlants = plants.filter((p) => !p.archived);
@@ -83,7 +79,7 @@ export const DashboardView: React.FC = () => {
   const upcomingEvents = activeEvents
     .filter((e) => e.payload.date >= todayStr)
     .sort((a, b) => a.payload.date.localeCompare(b.payload.date))
-    .slice(0, 4);
+    .slice(0, 2);
 
   const totalAnimalsCount = activeAnimals.reduce((s, a) => s + (a.payload.count || 0), 0);
   const eggLogs = animalLogs.filter((l) => !l.archived && l.payload.logType === 'Eier');
@@ -130,41 +126,46 @@ export const DashboardView: React.FC = () => {
   const isEmptyHomestead = activeAreas.length === 0 && activePlants.length === 0 && activeAnimals.length === 0;
 
   return (
-    <div className="space-y-6">
-      <ModuleHeader
-        title={`Guten Tag, ${activeIdentity || 'Hof-Team'}`}
-        subtitle={`Mellenbach-Glasbach, Thüringen · Phänologische Phase: ${currentPheno.phase} (${currentPheno.indicatorPlant})`}
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => setActiveModule('calendar')}
-              className="px-3.5 py-2 rounded-xl bg-[#233A29] text-white text-xs sm:text-sm font-medium inline-flex items-center gap-1.5 hover:opacity-90 transition whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" />
-              Aufgabe / Termin
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowConfigModal(true)}
-              className="px-3.5 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm font-medium inline-flex items-center gap-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition whitespace-nowrap"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              Dashboard anpassen
-            </button>
-          </>
-        }
-      />
+    <div className="space-y-3">
+      {/* Compact Single-Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2.5 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="min-w-0">
+          <h1 className="font-display text-lg sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight truncate">
+            Guten Tag, {activeIdentity || 'Hof-Team'}
+          </h1>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 truncate">
+            Mellenbach-Glasbach · {currentPheno.phase} ({currentPheno.indicatorPlant})
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveModule('calendar')}
+            className="px-3 py-1.5 rounded-xl bg-[#233A29] text-white text-xs font-medium inline-flex items-center gap-1.5 hover:opacity-90 transition whitespace-nowrap"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Aufgabe / Termin
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowConfigModal(true)}
+            className="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-medium inline-flex items-center gap-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition whitespace-nowrap"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            Anordnung
+          </button>
+        </div>
+      </div>
 
       {isEmptyHomestead && (
-        <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <h2 className="font-display text-lg font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-[#233A29] dark:text-[#BBE774]" />
+        <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="font-display text-base font-bold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#233A29] dark:text-[#BBE774]" />
               Erste Einrichtung für euren Selbstversorgerhof
             </h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-2xl">
-              Eure Datenbank ist noch leer. Ihr könnt mit einem Klick erprobte Grundbereiche (Hochbeet, Gewächshaus, Streuobstwiese, Hühnerstall, Kaninchen, Kompost), Sorten, Rezepte und Notfallvorlagen für Mellenbach-Glasbach anlegen und anschließend frei anpassen.
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 max-w-2xl">
+              Mit einem Klick Grundbereiche (Hochbeet, Gewächshaus, Streuobstwiese, Hühnerstall, Kaninchen), Sorten, Rezepte und Fachwissen für Mellenbach-Glasbach anlegen.
             </p>
           </div>
           <button
@@ -175,7 +176,7 @@ export const DashboardView: React.FC = () => {
               await initializeStarterData();
               setSeeding(false);
             }}
-            className="px-4 py-2.5 rounded-xl bg-[#233A29] text-white text-sm font-semibold hover:opacity-90 transition whitespace-nowrap shrink-0"
+            className="px-3.5 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold hover:opacity-90 transition whitespace-nowrap shrink-0"
           >
             {seeding ? 'Wird eingerichtet…' : 'Hof-Grundstruktur anlegen'}
           </button>
@@ -183,7 +184,7 @@ export const DashboardView: React.FC = () => {
       )}
 
       {/* Mobile Paged Section Selector (prevents vertical scrolling on phones) */}
-      <div className="lg:hidden space-y-2">
+      <div className="lg:hidden">
         <SegmentedTabs
           tabs={[
             { id: 'tasks', label: `Aufgaben (${tasks.length})` },
@@ -198,8 +199,8 @@ export const DashboardView: React.FC = () => {
         />
       </div>
 
-      {/* Configurable Cards Grid (Desktop: full grid, Mobile: paged by section) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      {/* Single-Page Compact Bento Grid (fits cleanly within 1 desktop viewport) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
         {layout
           .filter((c) => c.visible)
           .map((card) => {
@@ -212,24 +213,122 @@ export const DashboardView: React.FC = () => {
               (mobilePage === 'notes' && card.id === 'notes');
             const mobileHideClass = mobileVisible ? '' : 'hidden lg:block';
 
+            if (card.id === 'weather') {
+              const cond = weather ? describeWeatherCode(weather.current.weatherCode) : null;
+              const topAlert = weather?.gardenAlerts[0];
+              return (
+                <section
+                  key="weather"
+                  className={`${mobileHideClass} lg:col-span-7 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
+                >
+                  <div className="h-1 w-full bg-gradient-to-r from-[#597CD4] to-[#38BDF8]" />
+                  <div className="p-3.5 space-y-2.5 flex-1 flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="font-display text-sm sm:text-base font-semibold flex items-center gap-1.5">
+                        <CloudSun className="w-4 h-4 text-[#597CD4]" />
+                        Wetter Mellenbach-Glasbach
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setActiveModule('weather')}
+                        className="text-[11px] font-semibold text-[#597CD4] hover:underline whitespace-nowrap"
+                      >
+                        Vollansicht →
+                      </button>
+                    </div>
+
+                    {weather ? (
+                      <>
+                        <div className="grid grid-cols-4 gap-2">
+                          <div className="px-2.5 py-1.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
+                            <div className="text-[10px] text-neutral-500">Aktuell</div>
+                            <div className="text-lg font-bold font-mono-num leading-tight">
+                              {weather.current.temp.toFixed(1)} °C
+                            </div>
+                            <div className="text-[10px] text-neutral-500 truncate">{cond?.label}</div>
+                          </div>
+                          <div className="px-2.5 py-1.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
+                            <div className="text-[10px] text-neutral-500">Regen</div>
+                            <div className="text-lg font-bold font-mono-num leading-tight">
+                              {weather.today.precipProbMax} %
+                            </div>
+                            <div className="text-[10px] text-neutral-500 font-mono-num">
+                              {weather.daily[0]?.precipSum.toFixed(1)} mm
+                            </div>
+                          </div>
+                          <div className="px-2.5 py-1.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
+                            <div className="text-[10px] text-neutral-500">Min / Max</div>
+                            <div className="text-base font-bold font-mono-num leading-tight">
+                              {weather.today.tempMin.toFixed(0)}° / {weather.today.tempMax.toFixed(0)}°
+                            </div>
+                            <div className="text-[10px] text-neutral-500">
+                              Gef. {weather.current.apparentTemp.toFixed(0)}°C
+                            </div>
+                          </div>
+                          <div className="px-2.5 py-1.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
+                            <div className="text-[10px] text-neutral-500">Wind</div>
+                            <div className="text-lg font-bold font-mono-num leading-tight">
+                              {Math.round(weather.current.windSpeed)} <span className="text-[10px] font-normal">km/h</span>
+                            </div>
+                            <div className="text-[10px] text-neutral-500 font-mono-num">
+                              Böen {Math.round(weather.current.windGusts)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {topAlert && (
+                          <div
+                            className={`px-2.5 py-1.5 rounded-xl border text-[11px] truncate ${
+                              topAlert.level === 'warning'
+                                ? 'bg-[#CF6432]/10 border-[#CF6432]/35 text-neutral-900 dark:text-neutral-100'
+                                : topAlert.level === 'caution'
+                                ? 'bg-[#FFC814]/15 border-[#FFC814]/45 text-neutral-900 dark:text-neutral-100'
+                                : 'bg-[#A8F0D7]/20 border-[#A8F0D7]/50 text-neutral-900 dark:text-neutral-100'
+                            }`}
+                            title={`${topAlert.title}: ${topAlert.recommendation}`}
+                          >
+                            <strong>{topAlert.title}:</strong> {topAlert.recommendation}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-7 gap-1 text-center">
+                          {weather.daily.slice(0, 7).map((d) => (
+                            <div key={d.date} className="py-1 px-1 rounded-lg bg-[#F7F7F5] dark:bg-[#0F1412] text-[11px]">
+                              <div className="text-[10px] text-neutral-500 font-medium">
+                                {new Date(d.date + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short' })}
+                              </div>
+                              <div className="font-mono-num font-semibold leading-tight">
+                                {Math.round(d.tempMax)}°<span className="text-neutral-400 font-normal">/{Math.round(d.tempMin)}°</span>
+                              </div>
+                              <div className="font-mono-num text-[10px] text-[#597CD4]">
+                                {d.precipProbMax}%
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-neutral-500 py-4">Wetterdaten werden geladen…</div>
+                    )}
+                  </div>
+                </section>
+              );
+            }
+
             if (card.id === 'assistant') {
               return (
                 <section
                   key="assistant"
                   className={`${mobileHideClass} lg:col-span-5 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="h-1.5 w-full bg-gradient-to-r from-[#3B6912] via-[#BBE774] to-[#597CD4]" />
-                  <div className="p-5 space-y-3 flex-1">
+                  <div className="h-1 w-full bg-gradient-to-r from-[#3B6912] via-[#BBE774] to-[#597CD4]" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
                     <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <h2 className="font-display text-lg font-semibold flex items-center gap-2">
-                          <Sparkles className="w-5 h-5 text-[#3B6912] dark:text-[#BBE774]" />
-                          Hof-Assistent
-                        </h2>
-                        <p className="text-xs text-neutral-500 mt-0.5">
-                          Tipps für Garten, Beete, Rezepte & Wetter — direkt gefragt
-                        </p>
-                      </div>
+                      <h2 className="font-display text-sm sm:text-base font-semibold flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
+                        Hof-Assistent
+                      </h2>
+                      <span className="text-[11px] text-neutral-500">Garten, Tiere & Vorrat</span>
                     </div>
                     <HomesteadAssistantPanel
                       compact
@@ -240,200 +339,81 @@ export const DashboardView: React.FC = () => {
               );
             }
 
-            if (card.id === 'weather') {
-              const cond = weather ? describeWeatherCode(weather.current.weatherCode) : null;
-              return (
-                <section
-                  key="weather"
-                  className={`${mobileHideClass} lg:col-span-7 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden space-y-4`}
-                >
-                  <div className="h-1.5 w-full bg-gradient-to-r from-[#597CD4] to-[#38BDF8]" />
-                  <div className="px-5 pb-5 space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
-                        <CloudSun className="w-5 h-5 text-[#597CD4]" />
-                        Wetter & Gartenwetter
-                      </h2>
-                      <p className="text-xs text-neutral-500 mt-0.5">
-                        Mellenbach-Glasbach · {weather?.isStale ? 'Zwischengespeicherte Daten' : 'Aktuelle Open-Meteo Daten'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveModule('weather')}
-                      className="text-xs font-semibold text-[#597CD4] hover:underline whitespace-nowrap"
-                    >
-                      Vollansicht →
-                    </button>
-                  </div>
-
-                  {weather ? (
-                    <>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                          <div className="text-xs text-neutral-500">Aktuell</div>
-                          <div className="text-2xl font-bold font-mono-num mt-0.5">
-                            {weather.current.temp.toFixed(1)} °C
-                          </div>
-                          <div className="text-xs text-neutral-600 dark:text-neutral-400 truncate">
-                            {cond?.label}
-                          </div>
-                        </div>
-                        <div className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                          <div className="text-xs text-neutral-500">Regenrisiko</div>
-                          <div className="text-2xl font-bold font-mono-num mt-0.5">
-                            {weather.today.precipProbMax} %
-                          </div>
-                          <div className="text-xs text-neutral-600 dark:text-neutral-400 font-mono-num">
-                            {weather.daily[0]?.precipSum.toFixed(1)} mm heute
-                          </div>
-                        </div>
-                        <div className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                          <div className="text-xs text-neutral-500">Min / Max</div>
-                          <div className="text-xl font-bold font-mono-num mt-0.5">
-                            {weather.today.tempMin.toFixed(0)}° / {weather.today.tempMax.toFixed(0)}°
-                          </div>
-                          <div className="text-xs text-neutral-600 dark:text-neutral-400">
-                            Gefühlt {weather.current.apparentTemp.toFixed(1)} °C
-                          </div>
-                        </div>
-                        <div className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                          <div className="text-xs text-neutral-500">Wind</div>
-                          <div className="text-2xl font-bold font-mono-num mt-0.5">
-                            {Math.round(weather.current.windSpeed)} <span className="text-xs font-normal">km/h</span>
-                          </div>
-                          <div className="text-xs text-neutral-600 dark:text-neutral-400 font-mono-num">
-                            Böen {Math.round(weather.current.windGusts)} km/h
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        {weather.gardenAlerts.slice(0, 2).map((al) => (
-                          <div
-                            key={al.id}
-                            className={`p-3 rounded-xl border text-xs ${
-                              al.level === 'warning'
-                                ? 'bg-[#CF6432]/10 border-[#CF6432]/35 text-neutral-900 dark:text-neutral-100'
-                                : al.level === 'caution'
-                                ? 'bg-[#FFC814]/15 border-[#FFC814]/45 text-neutral-900 dark:text-neutral-100'
-                                : 'bg-[#A8F0D7]/20 border-[#A8F0D7]/50 text-neutral-900 dark:text-neutral-100'
-                            }`}
-                          >
-                            <div className="font-semibold">{al.title}</div>
-                            <div className="text-neutral-600 dark:text-neutral-300 mt-0.5">{al.recommendation}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-7 gap-1.5 pt-1 text-center">
-                        {weather.daily.slice(0, 7).map((d) => (
-                          <div key={d.date} className="p-2 rounded-lg bg-[#F7F7F5] dark:bg-[#0F1412] text-xs">
-                            <div className="text-neutral-500 font-medium">
-                              {new Date(d.date + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short' })}
-                            </div>
-                            <div className="font-mono-num font-semibold mt-1">
-                              {Math.round(d.tempMax)}°
-                            </div>
-                            <div className="font-mono-num text-neutral-500">
-                              {Math.round(d.tempMin)}°
-                            </div>
-                            <div className="font-mono-num text-[10px] text-[#597CD4] mt-0.5">
-                              {d.precipProbMax}%
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                  <div className="text-sm text-neutral-500 py-4">Wetterdaten werden geladen…</div>
-                  )}
-                  </div>
-                </section>
-              );
-            }
-
             if (card.id === 'tasks') {
               return (
                 <section
                   key="tasks"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold">Aufgaben & Termine</h2>
-                    <button
-                      type="button"
-                      onClick={() => setActiveModule('calendar')}
-                      className="text-xs font-semibold text-[#233A29] dark:text-[#BBE774] hover:underline"
-                    >
-                      Kalender →
-                    </button>
-                  </div>
+                  <div className="h-1 w-full bg-[#233A29]" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-sm sm:text-base font-semibold">Aufgaben & Termine</h2>
+                      <button
+                        type="button"
+                        onClick={() => setActiveModule('calendar')}
+                        className="text-[11px] font-semibold text-[#233A29] dark:text-[#BBE774] hover:underline"
+                      >
+                        Kalender →
+                      </button>
+                    </div>
 
-                  <div className="grid grid-cols-4 gap-2 text-center">
-                    <div className="p-2.5 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
-                      <div className="text-lg font-bold font-mono-num">{todayTasks.length}</div>
-                      <div className="text-[11px] text-neutral-500">Heute</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-[#BBE774]/20">
-                      <div className="text-lg font-bold font-mono-num">{nicoTasks.length}</div>
-                      <div className="text-[11px] text-neutral-700 dark:text-neutral-300">Nico</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-[#F28090]/20">
-                      <div className="text-lg font-bold font-mono-num">{chrisTasks.length}</div>
-                      <div className="text-[11px] text-neutral-700 dark:text-neutral-300">Chris</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-[#CF6432]/15">
-                      <div className="text-lg font-bold font-mono-num text-[#CF6432]">{overdueTasks.length}</div>
-                      <div className="text-[11px] text-neutral-700 dark:text-neutral-300">Überfällig</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 max-h-56 overflow-y-auto">
-                    {tasks.length === 0 ? (
-                      <p className="text-xs text-neutral-500 py-3">Keine offenen Aufgaben.</p>
-                    ) : (
-                      tasks.slice(0, 6).map((t) => (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">{t.title}</div>
-                            <div className="text-xs text-neutral-500 flex items-center gap-1.5">
-                              <span>{t.payload.assignee}</span>
-                              <span>·</span>
-                              <span className="font-mono-num">{t.payload.date}</span>
-                              {t.payload.date < todayStr && (
-                                <>
-                                  <span>·</span>
-                                  <span className="text-[#CF6432] font-medium">Überfällig</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => toggleTaskDone(t)}
-                            aria-label="Aufgabe erledigen"
-                            className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-neutral-300 dark:border-neutral-700 hover:bg-[#BBE774]/30 transition shrink-0"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
+                    <div className="grid grid-cols-4 gap-1.5 text-center">
+                      <div className="py-1.5 px-1 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412]">
+                        <div className="text-base font-bold font-mono-num leading-tight">{todayTasks.length}</div>
+                        <div className="text-[10px] text-neutral-500">Heute</div>
+                      </div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#BBE774]/20">
+                        <div className="text-base font-bold font-mono-num leading-tight">{nicoTasks.length}</div>
+                        <div className="text-[10px] text-neutral-700 dark:text-neutral-300">Nico</div>
+                      </div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#F28090]/20">
+                        <div className="text-base font-bold font-mono-num leading-tight">{chrisTasks.length}</div>
+                        <div className="text-[10px] text-neutral-700 dark:text-neutral-300">Chris</div>
+                      </div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#CF6432]/15">
+                        <div className="text-base font-bold font-mono-num text-[#CF6432] leading-tight">
+                          {overdueTasks.length}
                         </div>
-                      ))
+                        <div className="text-[10px] text-neutral-700 dark:text-neutral-300">Überfällig</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 max-h-[78px] overflow-y-auto pr-0.5">
+                      {tasks.length === 0 ? (
+                        <p className="text-xs text-neutral-500 py-1.5">Keine offenen Aufgaben.</p>
+                      ) : (
+                        tasks.slice(0, 5).map((t) => (
+                          <div
+                            key={t.id}
+                            className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800"
+                          >
+                            <div className="min-w-0 flex items-center gap-1.5 text-xs">
+                              <span className="font-medium truncate">{t.title}</span>
+                              <span className="text-[10px] text-neutral-500 font-mono-num shrink-0">
+                                {t.payload.date.slice(5)}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleTaskDone(t)}
+                              aria-label="Aufgabe erledigen"
+                              className="h-6 w-6 flex items-center justify-center rounded-md border border-neutral-300 dark:border-neutral-700 hover:bg-[#BBE774]/30 transition shrink-0"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {upcomingEvents.length > 0 && (
+                      <div className="pt-1.5 border-t border-neutral-200 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 truncate">
+                        <strong>Nächste ({sharedTasks.length} gem.):</strong>{' '}
+                        {upcomingEvents.map((e) => `${e.title} (${e.payload.date.slice(5)})`).join(' · ')}
+                      </div>
                     )}
                   </div>
-
-                  {upcomingEvents.length > 0 && (
-                    <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400">
-                      <span className="font-semibold text-neutral-900 dark:text-neutral-200">
-                        Nächste Termine ({sharedTasks.length} gemeinsam):{' '}
-                      </span>
-                      {upcomingEvents.map((e) => `${e.title} (${e.payload.date})`).join(' · ')}
-                    </div>
-                  )}
                 </section>
               );
             }
@@ -447,42 +427,42 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="garden"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="h-1.5 w-full bg-[#3B6912]" />
-                  <div className="p-5 space-y-3">
+                  <div className="h-1 w-full bg-[#3B6912]" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                      <h2 className="font-display text-sm sm:text-base font-semibold flex items-center gap-1.5">
                         <Sprout className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
                         Garten & Anbau
                       </h2>
                       <button
                         type="button"
                         onClick={() => setActiveModule('cultivation')}
-                        className="text-xs font-semibold text-[#3B6912] dark:text-[#BBE774] hover:underline"
+                        className="text-[11px] font-semibold text-[#3B6912] dark:text-[#BBE774] hover:underline"
                       >
                         Anbau →
                       </button>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2.5 rounded-xl bg-[#BBE774]/20">
-                        <div className="text-lg font-bold font-mono-num">{gardenBeds.length}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Beete/Flächen</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#BBE774]/20">
+                        <div className="text-base font-bold font-mono-num leading-tight">{gardenBeds.length}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Beete/Flächen</div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-[#65A30D]/15">
-                        <div className="text-lg font-bold font-mono-num">{activePlants.length}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Sorten</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#65A30D]/15">
+                        <div className="text-base font-bold font-mono-num leading-tight">{activePlants.length}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Sorten</div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-[#0D9488]/15">
-                        <div className="text-lg font-bold font-mono-num">{activePlantings.length}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Auf Beeten</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#0D9488]/15">
+                        <div className="text-base font-bold font-mono-num leading-tight">{activePlantings.length}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Auf Beeten</div>
                       </div>
                     </div>
-                    <div className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
-                      <div className="font-semibold text-neutral-900 dark:text-neutral-200">
-                        Im {currentMonthGuide.monthName} machbar:
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 space-y-0.5">
+                      <div className="font-semibold text-neutral-900 dark:text-neutral-200 truncate">
+                        Im {currentMonthGuide.monthName}:
                       </div>
-                      <p>
+                      <p className="line-clamp-2">
                         Anbau: {currentMonthGuide.sowingAndPlanting.slice(0, 2).join(', ')} · Ernte: {currentMonthGuide.harvest.slice(0, 2).join(', ')}
                       </p>
                     </div>
@@ -495,40 +475,40 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="animals"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="h-1.5 w-full bg-[#D97706]" />
-                  <div className="p-5 space-y-3">
+                  <div className="h-1 w-full bg-[#D97706]" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                      <h2 className="font-display text-sm sm:text-base font-semibold flex items-center gap-1.5">
                         <Bird className="w-4 h-4 text-[#D97706]" />
                         Tiere & Futter
                       </h2>
                       <button
                         type="button"
                         onClick={() => setActiveModule('animals')}
-                        className="text-xs font-semibold text-[#D97706] hover:underline"
+                        className="text-[11px] font-semibold text-[#D97706] hover:underline"
                       >
                         Tierbereich →
                       </button>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2.5 rounded-xl bg-[#FFC814]/20">
-                        <div className="text-lg font-bold font-mono-num">{totalAnimalsCount}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Tiere gesamt</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#FFC814]/20">
+                        <div className="text-base font-bold font-mono-num leading-tight">{totalAnimalsCount}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Tiere gesamt</div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-[#D97706]/15">
-                        <div className="text-lg font-bold font-mono-num">{recentEggs}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Eier (7 Tage)</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#D97706]/15">
+                        <div className="text-base font-bold font-mono-num leading-tight">{recentEggs}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Eier (7 T.)</div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-[#CF6432]/15">
-                        <div className={`text-lg font-bold font-mono-num ${lowFeed.length > 0 ? 'text-[#CF6432]' : ''}`}>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#CF6432]/15">
+                        <div className={`text-base font-bold font-mono-num leading-tight ${lowFeed.length > 0 ? 'text-[#CF6432]' : ''}`}>
                           {lowFeed.length}
                         </div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Futter knapp</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Futter knapp</div>
                       </div>
                     </div>
-                    <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 line-clamp-2">
                       {activeAnimals.length === 0
                         ? 'Noch keine Tiergruppen angelegt.'
                         : activeAnimals.map((g) => `${g.title} (${g.payload.count})`).join(' · ')}
@@ -542,40 +522,40 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="pantry"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="h-1.5 w-full bg-[#EA580C]" />
-                  <div className="p-5 space-y-3">
+                  <div className="h-1 w-full bg-[#EA580C]" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                      <h2 className="font-display text-sm sm:text-base font-semibold flex items-center gap-1.5">
                         <Warehouse className="w-4 h-4 text-[#EA580C]" />
                         Vorräte & Ernten
                       </h2>
                       <button
                         type="button"
                         onClick={() => setActiveModule('pantry')}
-                        className="text-xs font-semibold text-[#CF6432] hover:underline"
+                        className="text-[11px] font-semibold text-[#CF6432] hover:underline"
                       >
                         Vorräte →
                       </button>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2.5 rounded-xl bg-[#EA580C]/12">
-                        <div className="text-lg font-bold font-mono-num">{activeInventory.length}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Vorräte</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#EA580C]/12">
+                        <div className="text-base font-bold font-mono-num leading-tight">{activeInventory.length}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Vorräte</div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-[#F28090]/20">
-                        <div className="text-lg font-bold font-mono-num">{activeBatches.length}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Chargen</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#F28090]/20">
+                        <div className="text-base font-bold font-mono-num leading-tight">{activeBatches.length}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Chargen</div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-[#BBE774]/25">
-                        <div className="text-lg font-bold font-mono-num">{activeHarvests.length}</div>
-                        <div className="text-[11px] text-neutral-600 dark:text-neutral-300">Ernten</div>
+                      <div className="py-1.5 px-1 rounded-xl bg-[#BBE774]/25">
+                        <div className="text-base font-bold font-mono-num leading-tight">{activeHarvests.length}</div>
+                        <div className="text-[10px] text-neutral-600 dark:text-neutral-300">Ernten</div>
                       </div>
                     </div>
-                    <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-400 truncate">
                       {lowInventory.length > 0
-                        ? `Niedrige Bestände: ${lowInventory.map((i) => i.title).slice(0, 3).join(', ')}`
+                        ? `Niedrig: ${lowInventory.map((i) => i.title).slice(0, 3).join(', ')}`
                         : activeBatches[0]
                         ? `Letzte Charge: ${activeBatches[0].payload.batchNumber} (${activeBatches[0].title})`
                         : 'Noch keine Vorräte oder Ernten eingetragen.'}
@@ -589,27 +569,27 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="projects"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="h-1.5 w-full bg-[#9333EA]" />
-                  <div className="p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                  <div className="h-1 w-full bg-[#9333EA]" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="font-display text-sm sm:text-base font-semibold flex items-center gap-1.5">
                         <Hammer className="w-4 h-4 text-[#9333EA]" />
                         Projekte & Einkauf
                       </h2>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => setActiveModule('projects')}
-                          className="text-xs font-semibold text-[#9333EA] hover:underline"
+                          className="text-[11px] font-semibold text-[#9333EA] hover:underline"
                         >
                           Projekte →
                         </button>
                         <button
                           type="button"
                           onClick={() => setActiveModule('management')}
-                          className="text-xs font-semibold text-[#597CD4] hover:underline"
+                          className="text-[11px] font-semibold text-[#597CD4] hover:underline"
                         >
                           Einkauf ({activeShopping.length}) →
                         </button>
@@ -618,24 +598,21 @@ export const DashboardView: React.FC = () => {
                     {activeProjects.length === 0 ? (
                       <p className="text-xs text-neutral-500">Keine laufenden Bau- oder Hofprojekte.</p>
                     ) : (
-                      <div className="space-y-2.5">
-                        {activeProjects.slice(0, 3).map((proj) => {
+                      <div className="space-y-1.5">
+                        {activeProjects.slice(0, 2).map((proj) => {
                           const steps = proj.payload.steps || [];
                           const done = steps.filter((s) => s.done).length;
                           const pct = steps.length > 0 ? Math.round((done / steps.length) * 100) : 0;
                           return (
-                            <div key={proj.id} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-medium">{proj.title}</span>
-                                <span className="text-neutral-500 font-mono-num">
+                            <div key={proj.id} className="space-y-0.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-medium truncate">{proj.title}</span>
+                                <span className="text-neutral-500 font-mono-num shrink-0">
                                   {proj.payload.status} · {pct}%
                                 </span>
                               </div>
                               <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
-                                <div
-                                  className="h-full bg-[#9333EA]"
-                                  style={{ width: `${pct}%` }}
-                                />
+                                <div className="h-full bg-[#9333EA]" style={{ width: `${pct}%` }} />
                               </div>
                             </div>
                           );
@@ -651,27 +628,30 @@ export const DashboardView: React.FC = () => {
               return (
                 <section
                   key="notes"
-                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3`}
+                  className={`${mobileHideClass} lg:col-span-4 bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden flex flex-col`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold">
-                      Persönliche Notizen ({activeIdentity})
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => updatePersonalNotes(notesDraft)}
-                      className="px-3 py-1.5 rounded-lg bg-[#233A29] text-white text-xs font-medium hover:opacity-90 transition"
-                    >
-                      Speichern
-                    </button>
+                  <div className="h-1 w-full bg-neutral-400 dark:bg-neutral-600" />
+                  <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="font-display text-sm sm:text-base font-semibold truncate">
+                        Notizen ({activeIdentity})
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => updatePersonalNotes(notesDraft)}
+                        className="px-2.5 py-1 rounded-lg bg-[#233A29] text-white text-[11px] font-medium hover:opacity-90 transition shrink-0"
+                      >
+                        Speichern
+                      </button>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={notesDraft}
+                      onChange={(e) => setNotesDraft(e.target.value)}
+                      placeholder="Private Notizen oder Merkzettel…"
+                      className="w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-[#F7F7F5] dark:bg-[#0F1412] p-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#233A29]"
+                    />
                   </div>
-                  <textarea
-                    rows={4}
-                    value={notesDraft}
-                    onChange={(e) => setNotesDraft(e.target.value)}
-                    placeholder="Private Notizen, Ideen oder Merkzettel — nur für dein Konto sichtbar…"
-                    className="w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-[#F7F7F5] dark:bg-[#0F1412] p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#233A29]"
-                  />
                 </section>
               );
             }
@@ -680,15 +660,15 @@ export const DashboardView: React.FC = () => {
           })}
       </div>
 
-      {/* Dashboard Customization Modal */}
+      {/* Shared Dashboard Customization Modal */}
       <Modal
         open={showConfigModal}
         onClose={() => setShowConfigModal(false)}
-        title="Dashboard individuell konfigurieren"
+        title="Anzeigereihenfolge für alle festlegen"
       >
         <div className="space-y-3">
           <p className="text-xs text-neutral-600 dark:text-neutral-400">
-            Reihenfolge, Priorität und Sichtbarkeit der Karten werden persönlich für {activeIdentity} gespeichert.
+            Diese Reihenfolge und Sichtbarkeit der Dashboard-Karten gilt gemeinsam für alle Konten (Nico & Chris).
           </p>
           <div className="space-y-2">
             {layout.map((card, idx) => (

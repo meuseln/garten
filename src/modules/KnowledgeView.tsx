@@ -41,6 +41,7 @@ export const KnowledgeView: React.FC = () => {
 
   const [tab, setTab] = useState<'fachwissen' | 'erfahrung' | 'assistent'>('fachwissen');
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('Alle');
   const [seedingRefs, setSeedingRefs] = useState(false);
 
   const missingRefStats = useMemo(() => {
@@ -75,10 +76,27 @@ export const KnowledgeView: React.FC = () => {
     tags: [],
   });
 
+  const allFactualEntries = useMemo(
+    () =>
+      knowledgeEntries.filter(
+        (k) =>
+          !k.archived &&
+          (k.payload.domainType === 'Fachwissen' ||
+            k.payload.domainType === 'Pilze & Wildkräuter' ||
+            k.payload.domainType === 'Natur & Biodiversität')
+      ),
+    [knowledgeEntries]
+  );
+
+  const fachwissenCategories = useMemo(
+    () => Array.from(new Set(allFactualEntries.map((k) => k.payload.category).filter(Boolean))).sort(),
+    [allFactualEntries]
+  );
+
   const fachwissenEntries = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    return knowledgeEntries
-      .filter((k) => !k.archived && k.payload.domainType === 'Fachwissen')
+    return allFactualEntries
+      .filter((k) => (categoryFilter === 'Alle' ? true : k.payload.category === categoryFilter))
       .filter((k) =>
         q
           ? k.title.toLowerCase().includes(q) ||
@@ -88,7 +106,7 @@ export const KnowledgeView: React.FC = () => {
             (k.payload.source || '').toLowerCase().includes(q)
           : true
       );
-  }, [knowledgeEntries, searchTerm]);
+  }, [allFactualEntries, categoryFilter, searchTerm]);
 
   const erfahrungEntries = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -103,8 +121,8 @@ export const KnowledgeView: React.FC = () => {
       );
   }, [knowledgeEntries, searchTerm]);
 
-  const pagedFachwissen = usePagination(fachwissenEntries, 4);
-  const pagedErfahrung = usePagination(erfahrungEntries, 4);
+  const pagedFachwissen = usePagination(fachwissenEntries, 6);
+  const pagedErfahrung = usePagination(erfahrungEntries, 6);
 
   const openNew = (domainType: 'Fachwissen' | 'Erfahrungswissen') => {
     setEditing(null);
@@ -186,13 +204,29 @@ export const KnowledgeView: React.FC = () => {
           onChange={(id) => setTab(id as typeof tab)}
         />
         {tab !== 'assistent' && (
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Wissen durchsuchen…"
-            className="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-xs w-full sm:w-64"
-          />
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            {tab === 'fachwissen' && (
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-xs"
+              >
+                <option value="Alle">Alle Themen ({allFactualEntries.length})</option>
+                {fachwissenCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Wissen durchsuchen…"
+              className="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-xs w-full sm:w-56"
+            />
+          </div>
         )}
       </div>
 

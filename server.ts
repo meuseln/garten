@@ -3,7 +3,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,7 +29,17 @@ QUALITÄTS- & SICHERHEITSREGELN (STRIKT EINHALTEN):
 5. Tiergesundheit: Du gibst nur Dokumentations-, Pflege- und Beobachtungshinweise, niemals tierärztliche Diagnosen oder Medikationsfreigaben.
 6. Wenn eine konkrete Aktion (Aufgabe anlegen, Kalendertermin erstellen, Einkaufslisteneintrag anlegen, Projektvorschlag erstellen) sinnvoll ist, füge sie in "proposedActions" ein — sie wird erst nach ausdrücklicher Bestätigung durch Nico oder Chris ausgeführt.`;
 
-const MODEL_CHAIN = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+interface ModelAttemptConfig {
+  model: 'gemini-3.1-flash-lite' | 'gemini-4-hydrogen';
+  thinkingLevel: ThinkingLevel;
+  delayAfterFailMs: number;
+}
+
+const MODEL_ATTEMPTS: ModelAttemptConfig[] = [
+  { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, delayAfterFailMs: 350 },
+  { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW, delayAfterFailMs: 650 },
+  { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, delayAfterFailMs: 0 },
+];
 
 function isTransientHighDemandError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : JSON.stringify(err || '');
@@ -88,29 +98,28 @@ const RESPONSE_SCHEMA = {
 
 async function generateWithFallback(ai: GoogleGenAI, prompt: string) {
   let lastError: unknown;
-  for (const model of MODEL_CHAIN) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        return await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-            responseMimeType: 'application/json',
-            responseSchema: RESPONSE_SCHEMA,
-          },
-        });
-      } catch (err) {
-        lastError = err;
-        if (isTransientHighDemandError(err)) {
-          if (attempt === 0) {
-            await sleep(450);
-            continue;
-          }
-          break;
+  for (const step of MODEL_ATTEMPTS) {
+    try {
+      return await ai.models.generateContent({
+        model: step.model,
+        contents: prompt,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+          thinkingConfig: { thinkingLevel: step.thinkingLevel },
+        },
+      });
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Hof-Assistent] ${step.model} fehlgeschlagen:`, err instanceof Error ? err.message : err);
+      if (isTransientHighDemandError(err)) {
+        if (step.delayAfterFailMs > 0) {
+          await sleep(step.delayAfterFailMs);
         }
-        throw err;
+        continue;
       }
+      throw err;
     }
   }
   throw lastError;
@@ -151,9 +160,9 @@ app.post('/api/assistant', async (req, res) => {
       },
     });
 
-    const contextSummary = JSON.stringify(body.homesteadContext || {}, null, 2).slice(0, 24000);
+    const contextSummary = JSON.stringify(body.homesteadContext || {}).slice(0, 10000);
     const historyLines = (body.history || [])
-      .slice(-6)
+      .slice(-4)
       .map((m) => `${m.role === 'user' ? 'Nutzer' : 'Assistent'}: ${m.text}`)
       .join('\n');
 
@@ -168,7 +177,7 @@ app.post('/api/assistant', async (req, res) => {
     if (isTransientHighDemandError(err)) {
       res.status(503).json({
         error:
-          'Der KI-Dienst hat gerade kurzzeitig viele Anfragen gleichzeitig (Überlastung). Bitte in ein paar Sekunden erneut auf „Fragen“ klicken.',
+          'Der KI-Dienst hat gerade kurzzeitig viele Anfragen gleichzeitig (Überlastung). Bitte in ein paar Sekunden erneut auf „Erneut versuchen“ klicken.',
       });
       return;
     }

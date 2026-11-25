@@ -164,9 +164,10 @@ interface HomesteadContextValue {
   logoutUser: () => Promise<void>;
   deleteOwnAccount: () => Promise<void>;
 
-  // Personal settings actions
+  // Personal & shared settings actions
   updatePersonalNotes: (notes: string) => Promise<void>;
   updateNotificationSettings: (settings: UserNotificationSettings) => Promise<void>;
+  sharedDashboardLayout: DashboardCardConfig[];
   updateDashboardLayout: (layout: DashboardCardConfig[]) => Promise<void>;
   requestPushPermission: () => Promise<{ granted: boolean; reason?: string }>;
 
@@ -1029,15 +1030,60 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  const SHARED_DASHBOARD_LAYOUT_DOC_ID = 'dashboard_layout_shared_v1';
+
+  const sharedDashboardLayout = useMemo<DashboardCardConfig[]>(() => {
+    const sharedDoc = documents.find(
+      (d) => d.id === SHARED_DASHBOARD_LAYOUT_DOC_ID && !d.archived
+    );
+    const saved = sharedDoc?.payload?.sharedDashboardLayout;
+    if (!Array.isArray(saved) || saved.length === 0) {
+      return DEFAULT_DASHBOARD_LAYOUT;
+    }
+    const savedMap = new Map(saved.map((c) => [c.id, c]));
+    return DEFAULT_DASHBOARD_LAYOUT.map((def) => {
+      const custom = savedMap.get(def.id);
+      return custom ? { ...def, visible: custom.visible, priority: custom.priority } : def;
+    }).sort((a, b) => a.priority - b.priority);
+  }, [documents]);
+
   const updateDashboardLayout = async (layout: DashboardCardConfig[]) => {
     if (!firebaseUser || !userProfile) return;
+    const payload: DocumentPayload = {
+      docType: 'Sonstiges',
+      linkedModule: 'Dashboard',
+      date: new Date().toISOString().slice(0, 10),
+      fileName: '',
+      externalUrl: '',
+      notes: 'Gemeinsame Dashboard-Anzeigereihenfolge für Nico & Chris.',
+      sharedDashboardLayout: layout,
+    };
+    const existingDoc = documents.find((d) => d.id === SHARED_DASHBOARD_LAYOUT_DOC_ID);
     try {
-      await updateDoc(doc(db, 'users', firebaseUser.uid), {
-        dashboardLayout: layout,
-        updatedAt: serverTimestamp(),
-      });
+      if (existingDoc) {
+        await updateDoc(doc(db, 'documents', SHARED_DASHBOARD_LAYOUT_DOC_ID), {
+          title: 'Gemeinsame Dashboard-Reihenfolge',
+          archived: false,
+          payload,
+          updatedBy: firebaseUser.uid,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await setDoc(doc(db, 'documents', SHARED_DASHBOARD_LAYOUT_DOC_ID), {
+          homesteadId: 'mellenbach-hof',
+          module: 'documents',
+          title: 'Gemeinsame Dashboard-Reihenfolge',
+          archived: false,
+          payload,
+          createdBy: firebaseUser.uid,
+          updatedBy: firebaseUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      pushToast('success', 'Dashboard-Reihenfolge für alle gespeichert.');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${firebaseUser.uid}`);
+      handleFirestoreError(err, OperationType.WRITE, `documents/${SHARED_DASHBOARD_LAYOUT_DOC_ID}`);
     }
   };
 
@@ -1446,6 +1492,7 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         deleteOwnAccount,
         updatePersonalNotes,
         updateNotificationSettings,
+        sharedDashboardLayout,
         updateDashboardLayout,
         requestPushPermission,
         pings,

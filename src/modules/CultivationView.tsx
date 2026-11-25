@@ -54,6 +54,10 @@ function getGroupColor(group: string): string {
       return '#9333EA';
     case 'Obst & Beeren':
       return '#D45B6E';
+    case 'Nüsse':
+      return '#92400E';
+    case 'Pilze':
+      return '#7C3AED';
     case 'Kräuter':
       return '#0284C7';
     default:
@@ -208,7 +212,13 @@ export const CultivationView: React.FC = () => {
 
   const filteredPlants = useMemo(() => {
     return activePlants.filter((p) => {
-      if (tab === 'trees' && !p.payload.isTree && p.payload.group !== 'Obst & Beeren' && p.payload.group !== 'Gehölze') {
+      if (
+        tab === 'trees' &&
+        !p.payload.isTree &&
+        p.payload.group !== 'Obst & Beeren' &&
+        p.payload.group !== 'Nüsse' &&
+        p.payload.group !== 'Gehölze'
+      ) {
         return false;
       }
       if (groupFilter !== 'Alle' && p.payload.group !== groupFilter) return false;
@@ -534,10 +544,10 @@ export const CultivationView: React.FC = () => {
               <div className="text-xs space-y-0.5">
                 <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
-                  {missingStarterCount} weitere Obst-, Beeren- & Gemüsesorten verfügbar
+                  {missingStarterCount} weitere Obst-, Gemüse-, Nuss- & Pilzeinträge verfügbar
                 </div>
                 <p className="text-neutral-600 dark:text-neutral-300">
-                  Inklusive Erdbeere, Kirsche, Zwetschge, Birne, Paprika, Gurke, Radieschen, Salat, Spinat & Basilikum samt guten Nachbarn und Tipps.
+                  Inklusive Kirsche, Heidelbeere, Walnuss, Haselnuss, Esskastanie, Austernseitling, Shiitake, Kohlrabi, Lauch, Brokkoli & Nachbarschaftstipps.
                 </p>
               </div>
               <button

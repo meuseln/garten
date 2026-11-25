@@ -1,13 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import {
   Archive,
+  BookOpen,
   CheckCircle2,
+  Database,
   Edit3,
   HeartPulse,
   Plus,
   ShoppingCart,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
+import { buildStarterKnowledge } from '../data/botanicalCatalog';
 import {
   EmptyState,
   Modal,
@@ -29,6 +32,9 @@ export const AnimalsView: React.FC = () => {
     animalLogs,
     feedStocks,
     areas,
+    knowledgeEntries,
+    setActiveModule,
+    seedReferenceDatabases,
     createRecord,
     updateRecord,
     archiveRecord,
@@ -36,6 +42,7 @@ export const AnimalsView: React.FC = () => {
   } = useHomestead();
 
   const [tab, setTab] = useState<'groups' | 'production' | 'feed' | 'health'>('groups');
+  const [seedingRefs, setSeedingRefs] = useState(false);
   const [groupModal, setGroupModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<HomesteadRecord<AnimalGroupPayload> | null>(null);
   const [groupForm, setGroupForm] = useState<AnimalGroupPayload>({
@@ -86,6 +93,10 @@ export const AnimalsView: React.FC = () => {
   const activeLogs = useMemo(() => animalLogs.filter((l) => !l.archived), [animalLogs]);
   const activeFeed = useMemo(() => feedStocks.filter((f) => !f.archived), [feedStocks]);
   const activeAreas = useMemo(() => areas.filter((a) => !a.archived), [areas]);
+  const missingKnowledgeCount = useMemo(() => {
+    const existing = new Set(knowledgeEntries.map((k) => k.title.trim().toLowerCase()));
+    return buildStarterKnowledge().filter((k) => !existing.has(k.title.trim().toLowerCase())).length;
+  }, [knowledgeEntries]);
 
   const productionLogs = useMemo(
     () => activeLogs.filter((l) => !['Gesundheit', 'Tierarzt', 'Impfung'].includes(l.payload.logType)),
@@ -237,6 +248,43 @@ export const AnimalsView: React.FC = () => {
           { id: 'health', label: 'Gesundheit & Tierarzt' },
         ]}
       />
+
+      <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+          <BookOpen className="w-4 h-4 text-[#233A29] dark:text-[#BBE774] shrink-0" />
+          <span>
+            Rassen, Futter, Pflege, Vermehrung, Ausbeinen sowie Eier- &amp; Fleischlagerung für Hühner &amp; Kaninchen im Fachwissen.
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {missingKnowledgeCount > 0 && (
+            <button
+              type="button"
+              disabled={seedingRefs}
+              onClick={async () => {
+                setSeedingRefs(true);
+                try {
+                  const res = await seedReferenceDatabases();
+                  pushToast('success', `${res.added} neue Einträge in die Hof-Datenbanken geladen.`);
+                } finally {
+                  setSeedingRefs(false);
+                }
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-[#233A29] text-white font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Database className="w-3.5 h-3.5" />
+              {seedingRefs ? 'Lädt…' : `Datenbank ergänzen (+${missingKnowledgeCount})`}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setActiveModule('knowledge')}
+            className="px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 font-semibold text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
+          >
+            Tier-Fachwissen öffnen →
+          </button>
+        </div>
+      </div>
 
       {tab === 'groups' && (
         <>

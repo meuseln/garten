@@ -114,7 +114,7 @@ export interface AreaPayload {
 export interface PlantPayload {
   species: string;
   variety: string;
-  group: 'Fruchtgemüse' | 'Wurzel- & Knollengemüse' | 'Kohlgemüse' | 'Blattgemüse' | 'Hülsenfrüchte' | 'Zwiebelgewächse' | 'Weitere Kulturen' | 'Obst & Beeren' | 'Kräuter' | 'Gehölze';
+  group: 'Fruchtgemüse' | 'Wurzel- & Knollengemüse' | 'Kohlgemüse' | 'Blattgemüse' | 'Hülsenfrüchte' | 'Zwiebelgewächse' | 'Weitere Kulturen' | 'Obst & Beeren' | 'Nüsse' | 'Pilze' | 'Kräuter' | 'Gehölze';
   description: string;
   origin: string;
   daysToMaturity: string;
@@ -492,6 +492,7 @@ export interface DocumentPayload {
   externalUrl: string;
   notes: string;
   mapItems?: GardenMapItem[];
+  sharedDashboardLayout?: DashboardCardConfig[];
 }
 
 export interface EmergencyConfigPayload {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Send, ShieldAlert, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw, Send, ShieldAlert, Sparkles } from 'lucide-react';
 import { useHomestead } from '../../context/HomesteadContext';
 import { REGIONAL_SOIL_WATER_REFERENCE } from '../../lib/weather';
 import type { AssigneeScope, CalendarCategory } from '../../types/homestead';
@@ -48,6 +48,7 @@ export const HomesteadAssistantPanel: React.FC<{
   } = useHomestead();
 
   const [question, setQuestion] = useState('');
+  const [lastAskedQuestion, setLastAskedQuestion] = useState('');
   const [assistantBusy, setAssistantBusy] = useState(false);
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const [conversation, setConversation] = useState<AssistantTurn[]>([]);
@@ -58,104 +59,108 @@ export const HomesteadAssistantPanel: React.FC<{
 
   const buildHomesteadSummary = () => ({
     standort: REGIONAL_SOIL_WATER_REFERENCE.address,
-    bodenWasserReferenz: {
-      geologie: REGIONAL_SOIL_WATER_REFERENCE.geology,
-      wasserhaerte: REGIONAL_SOIL_WATER_REFERENCE.waterHardness,
-    },
-    aktuellesDatum: new Date().toISOString().slice(0, 10),
-    aktiverNutzer: activeIdentity,
+    datum: new Date().toISOString().slice(0, 10),
+    nutzer: activeIdentity,
     wetter: weather
       ? {
-          aktuellTempC: weather.current.temp,
-          heuteMinC: weather.today.tempMin,
-          heuteMaxC: weather.today.tempMax,
-          regenHeuteMm: weather.daily[0]?.precipSum,
-          warnungen: weather.gardenAlerts.map((a) => `${a.title}: ${a.recommendation}`),
+          tempC: Math.round(weather.current.temp * 10) / 10,
+          minMaxC: `${Math.round(weather.today.tempMin)}/${Math.round(weather.today.tempMax)}`,
+          regenMm: weather.daily[0]?.precipSum,
+          warnung: weather.gardenAlerts[0]?.title || '',
         }
       : null,
     flaechen: areas
       .filter((a) => !a.archived)
-      .map((a) => ({ name: a.title, typ: a.payload.areaType, qm: a.payload.sizeSqm, boden: a.payload.soilType })),
+      .slice(0, 12)
+      .map((a) => `${a.title} (${a.payload.areaType}, ${a.payload.sizeSqm}qm)`),
     sorten: plants
       .filter((p) => !p.archived)
-      .slice(0, 25)
-      .map((p) => ({ name: p.title, art: p.payload.species, bewertung: p.payload.experienceRating })),
-    pflanzungen: plantings
+      .slice(0, 18)
+      .map((p) => p.title),
+    beeteAktuell: plantings
       .filter((p) => !p.archived)
-      .slice(0, 25)
-      .map((p) => ({
-        kultur: p.title,
-        beet: p.payload.areaName,
-        status: p.payload.status,
-        erntemonat: p.payload.harvestMonth,
-      })),
-    saatgut: seeds
-      .filter((s) => !s.archived)
-      .slice(0, 20)
-      .map((s) => ({
-        sorte: s.title,
-        menge: s.payload.quantity,
-        einheit: s.payload.unit,
-        nachbestellen: s.payload.reorderNeeded,
-      })),
+      .slice(0, 18)
+      .map((p) => `${p.title} [${p.payload.status}]`),
+    saatgutKnapp: seeds
+      .filter((s) => !s.archived && s.payload.reorderNeeded)
+      .slice(0, 10)
+      .map((s) => s.title),
     tiere: animalGroups
       .filter((g) => !g.archived)
-      .map((g) => ({ gruppe: g.title, anzahl: g.payload.count, futterplan: g.payload.feedingPlan })),
+      .map((g) => `${g.title}: ${g.payload.count}`),
     futter: feedStocks
       .filter((f) => !f.archived)
-      .map((f) => ({ futter: f.title, kg: f.payload.quantityKg, minKg: f.payload.minStockKg })),
+      .map((f) => `${f.title}: ${f.payload.quantityKg}kg (Min ${f.payload.minStockKg}kg)`),
     vorraete: inventoryItems
       .filter((i) => !i.archived)
-      .slice(0, 25)
-      .map((i) => ({ artikel: i.title, menge: i.payload.quantity, einheit: i.payload.unit, ort: i.payload.location })),
-    letzteErnten: harvests
+      .slice(0, 15)
+      .map((i) => `${i.title}: ${i.payload.quantity} ${i.payload.unit}`),
+    ernten: harvests
       .filter((h) => !h.archived)
-      .slice(0, 15)
-      .map((h) => ({ kultur: h.title, menge: h.payload.amount, einheit: h.payload.unit, datum: h.payload.date })),
-    projekte: projects
-      .filter((p) => !p.archived)
-      .map((p) => ({ projekt: p.title, status: p.payload.status })),
-    offeneAufgaben: calendarEvents
-      .filter((c) => !c.archived && !c.payload.completed)
-      .slice(0, 15)
-      .map((c) => ({ titel: c.title, datum: c.payload.date, zustaendig: c.payload.assignee })),
-    erfahrungswissen: erfahrungEntries
       .slice(0, 10)
-      .map((k) => ({ titel: k.title, inhalt: k.payload.content.slice(0, 200) })),
+      .map((h) => `${h.title}: ${h.payload.amount} ${h.payload.unit}`),
+    projekte: projects
+      .filter((p) => !p.archived && p.payload.status !== 'Abgeschlossen')
+      .slice(0, 8)
+      .map((p) => `${p.title} (${p.payload.status})`),
+    aufgaben: calendarEvents
+      .filter((c) => !c.archived && !c.payload.completed)
+      .slice(0, 10)
+      .map((c) => `${c.title} (${c.payload.date})`),
+    erfahrung: erfahrungEntries
+      .slice(0, 6)
+      .map((k) => `${k.title}: ${k.payload.content.slice(0, 120)}`),
   });
 
-  const submitQuestion = async (rawQuestion: string) => {
+  const callAssistantEndpoint = async (cleanQ: string, historySlice: Array<{ role: 'user' | 'model'; text: string }>) => {
+    const payloadStr = JSON.stringify({
+      question: cleanQ,
+      history: historySlice,
+      homesteadContext: buildHomesteadSummary(),
+    });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payloadStr,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return data;
+
+      if (res.status === 503 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1100));
+        continue;
+      }
+
+      const msg =
+        typeof data?.error === 'string'
+          ? data.error
+          : data?.error?.message || `Der Hof-Assistent hat mit Status ${res.status} geantwortet.`;
+      throw new Error(msg);
+    }
+  };
+
+  const submitQuestion = async (rawQuestion: string, isRetry = false) => {
     const cleanQ = rawQuestion.trim();
     if (!cleanQ || assistantBusy) return;
 
     setAssistantError(null);
-    const userTurn: AssistantTurn = {
-      id: `u_${Date.now()}`,
-      role: 'user',
-      text: cleanQ,
-    };
-    setConversation((prev) => [...prev, userTurn]);
-    setQuestion('');
+    setLastAskedQuestion(cleanQ);
+    if (!isRetry) {
+      const userTurn: AssistantTurn = {
+        id: `u_${Date.now()}`,
+        role: 'user',
+        text: cleanQ,
+      };
+      setConversation((prev) => [...prev, userTurn]);
+      setQuestion('');
+    }
     setAssistantBusy(true);
 
     try {
-      const res = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: cleanQ,
-          history: conversation.slice(-6).map((t) => ({ role: t.role, text: t.text })),
-          homesteadContext: buildHomesteadSummary(),
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg =
-          typeof data?.error === 'string'
-            ? data.error
-            : data?.error?.message || `Der Hof-Assistent hat mit Status ${res.status} geantwortet.`;
-        throw new Error(msg);
-      }
+      const historySlice = conversation.slice(-4).map((t) => ({ role: t.role, text: t.text }));
+      const data = await callAssistantEndpoint(cleanQ, historySlice);
       const modelTurn: AssistantTurn = {
         id: `m_${Date.now()}`,
         role: 'model',
@@ -249,7 +254,6 @@ export const HomesteadAssistantPanel: React.FC<{
     ? [
         'Was steht bei diesem Wetter im Garten an?',
         'Was passt jetzt als Nachkultur aufs Beet?',
-        'Was können wir aus unseren Vorräten kochen?',
       ]
     : [
         'Was steht diese Woche bei dem Wetter in Mellenbach im Garten & Stall an?',
@@ -257,10 +261,10 @@ export const HomesteadAssistantPanel: React.FC<{
         'Prüfe unseren Saatgut- und Futterbestand auf knappe Reserven.',
       ];
 
-  const visibleTurns = compact ? conversation.slice(-4) : conversation;
+  const visibleTurns = compact ? conversation.slice(-2) : conversation;
 
   return (
-    <div className="space-y-3">
+    <div className={compact ? 'space-y-2' : 'space-y-3'}>
       {!compact && (
         <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
           <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
@@ -280,7 +284,9 @@ export const HomesteadAssistantPanel: React.FC<{
             type="button"
             disabled={assistantBusy}
             onClick={() => submitQuestion(sample)}
-            className="text-xs px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-[#F7F7F5] dark:bg-[#0F1412] hover:bg-[#BBE774]/20 text-left transition"
+            className={`${
+              compact ? 'text-[11px] px-2.5 py-1 rounded-lg' : 'text-xs px-3 py-1.5 rounded-xl'
+            } border border-neutral-200 dark:border-neutral-800 bg-[#F7F7F5] dark:bg-[#0F1412] hover:bg-[#BBE774]/20 text-left transition`}
           >
             {sample}
           </button>
@@ -288,17 +294,19 @@ export const HomesteadAssistantPanel: React.FC<{
       </div>
 
       {visibleTurns.length > 0 && (
-        <div className={`space-y-3 ${compact ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
+        <div className={`space-y-2 ${compact ? 'max-h-24 overflow-y-auto pr-1' : ''}`}>
           {visibleTurns.map((turn) => (
             <div
               key={turn.id}
-              className={`rounded-2xl p-3.5 sm:p-4 border ${
+              className={`${compact ? 'rounded-xl p-2.5' : 'rounded-2xl p-3.5 sm:p-4'} border ${
                 turn.role === 'user'
                   ? 'bg-[#233A29] text-white border-[#233A29] ml-auto max-w-xl'
-                  : 'bg-[#F7F7F5] dark:bg-[#0F1412] border-neutral-200 dark:border-neutral-800 space-y-2.5'
+                  : 'bg-[#F7F7F5] dark:bg-[#0F1412] border-neutral-200 dark:border-neutral-800 space-y-2'
               }`}
             >
-              <div className="text-xs sm:text-sm leading-relaxed whitespace-pre-line">{turn.text}</div>
+              <div className={`${compact ? 'text-xs' : 'text-xs sm:text-sm'} leading-relaxed whitespace-pre-line`}>
+                {turn.text}
+              </div>
 
               {!compact && turn.evidenceCategories && turn.evidenceCategories.length > 0 && (
                 <div className="text-xs text-neutral-500 pt-2 border-t border-neutral-200 dark:border-neutral-800">
@@ -307,14 +315,14 @@ export const HomesteadAssistantPanel: React.FC<{
               )}
 
               {turn.safetyNotice && (
-                <div className="p-2.5 rounded-xl bg-[#CF6432]/12 border border-[#CF6432]/35 text-xs flex items-start gap-2">
+                <div className="p-2 rounded-xl bg-[#CF6432]/12 border border-[#CF6432]/35 text-xs flex items-start gap-2">
                   <ShieldAlert className="w-4 h-4 text-[#CF6432] shrink-0 mt-0.5" />
                   <span>{turn.safetyNotice}</span>
                 </div>
               )}
 
               {turn.proposedActions && turn.proposedActions.length > 0 && (
-                <div className="space-y-2 pt-1">
+                <div className="space-y-1.5 pt-1">
                   <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                     Vorschlag übernehmen:
                   </div>
@@ -323,7 +331,7 @@ export const HomesteadAssistantPanel: React.FC<{
                     return (
                       <div
                         key={`${turn.id}_act_${idx}`}
-                        className="p-2.5 rounded-xl bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                        className="p-2 rounded-xl bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                       >
                         <div>
                           <div className="font-semibold">{act.title}</div>
@@ -341,7 +349,7 @@ export const HomesteadAssistantPanel: React.FC<{
                           <button
                             type="button"
                             onClick={() => executeProposedAction(turn.id, idx, act)}
-                            className="px-3 py-1.5 rounded-xl bg-[#233A29] text-white font-semibold shrink-0 hover:opacity-90"
+                            className="px-3 py-1 rounded-lg bg-[#233A29] text-white font-semibold shrink-0 hover:opacity-90"
                           >
                             Anlegen
                           </button>
@@ -357,9 +365,22 @@ export const HomesteadAssistantPanel: React.FC<{
       )}
 
       {assistantError && (
-        <div className="p-3 rounded-xl bg-[#CF6432]/12 border border-[#CF6432]/35 text-xs text-[#9A3E14] dark:text-[#F49D76] flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{assistantError}</span>
+        <div className="p-2.5 rounded-xl bg-[#CF6432]/12 border border-[#CF6432]/35 text-xs text-[#9A3E14] dark:text-[#F49D76] flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{assistantError}</span>
+          </div>
+          {lastAskedQuestion && (
+            <button
+              type="button"
+              disabled={assistantBusy}
+              onClick={() => submitQuestion(lastAskedQuestion, true)}
+              className="px-2.5 py-1 rounded-lg bg-[#CF6432] text-white font-semibold inline-flex items-center gap-1 shrink-0 hover:opacity-90"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Erneut versuchen
+            </button>
+          )}
         </div>
       )}
 
@@ -368,15 +389,19 @@ export const HomesteadAssistantPanel: React.FC<{
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Kurze Frage an euren Hof-Assistenten stellen…"
-          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] text-sm"
+          placeholder="Frage an Hof-Assistenten stellen…"
+          className={`flex-1 min-w-0 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#0F1412] ${
+            compact ? 'h-9 text-xs' : 'py-2.5 text-sm'
+          }`}
         />
         <button
           type="submit"
           disabled={assistantBusy || !question.trim()}
-          className="min-h-[42px] px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50 shrink-0"
+          className={`${
+            compact ? 'h-9 px-3 text-xs' : 'min-h-[42px] px-4 py-2 text-xs sm:text-sm'
+          } rounded-xl bg-[#233A29] text-white font-semibold inline-flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50 shrink-0`}
         >
-          <Send className="w-4 h-4" />
+          <Send className="w-3.5 h-3.5" />
           {assistantBusy ? 'Denkt…' : 'Fragen'}
         </button>
       </form>
@@ -386,7 +411,7 @@ export const HomesteadAssistantPanel: React.FC<{
           <button
             type="button"
             onClick={onOpenFull}
-            className="text-xs font-medium text-[#597CD4] hover:underline"
+            className="text-[11px] font-medium text-[#597CD4] hover:underline"
           >
             Großen Hof-Assistent & Wissensarchiv öffnen →
           </button>
