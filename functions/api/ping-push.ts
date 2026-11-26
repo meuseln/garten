@@ -197,22 +197,39 @@ interface FirestoreDoc {
 }
 
 async function fetchHomesteadMembers(idToken: string): Promise<Array<{ uid: string; displayName: string; fcmToken?: string }>> {
-  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents/homesteadMembers?pageSize=20`;
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents:runQuery`;
   const res = await fetch(url, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'homesteadMembers' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'homesteadId' },
+            op: 'EQUAL',
+            value: { stringValue: 'mellenbach-hof' },
+          },
+        },
+        limit: 20,
+      },
+    }),
   });
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`Mitgliederabfrage fehlgeschlagen (${res.status}): ${txt}`);
   }
-  const data = (await res.json()) as { documents?: FirestoreDoc[] };
-  return (data.documents || []).map((doc) => ({
-    uid: doc.fields?.uid?.stringValue || '',
-    displayName: doc.fields?.displayName?.stringValue || '',
-    fcmToken: doc.fields?.fcmToken?.stringValue || undefined,
-  }));
+  const rows = (await res.json()) as Array<{ document?: FirestoreDoc }>;
+  return rows
+    .filter((row) => Boolean(row.document?.fields))
+    .map((row) => ({
+      uid: row.document!.fields?.uid?.stringValue || '',
+      displayName: row.document!.fields?.displayName?.stringValue || '',
+      fcmToken: row.document!.fields?.fcmToken?.stringValue || undefined,
+    }));
 }
 
 export async function handlePingPush(context: WorkerContext): Promise<Response> {
