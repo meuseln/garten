@@ -150,6 +150,11 @@ export interface PlantPayload {
   bloomWindow?: string;
   pruningNotes?: string;
   winterProtection?: string;
+  // Tree / Plant identification & non-food uses
+  leafShape?: string;
+  barkAndBuds?: string;
+  identificationTraits?: string;
+  practicalUses?: string;
   // Personal experience
   experienceRating?: number;
   experienceYieldNote?: string;
@@ -292,6 +297,7 @@ export interface RecipePayload {
     | 'Marmeladen & Gelees'
     | 'Deutsche Küche'
     | 'Mediterrane Küche'
+    | 'Hausmittel'
     | 'Sonstiges';
   baseRawAmountKg: number;
   baseYieldAmount: number;

@@ -94,7 +94,7 @@ export const PantryView: React.FC = () => {
   const [availableInputKgText, setAvailableInputKgText] = useState<string>('');
   const [availableCropInput, setAvailableCropInput] = useState<string>('');
   const [recipeCategoryFilter, setRecipeCategoryFilter] = useState<
-    'Alle' | 'Deutsche Küche' | 'Mediterrane Küche' | 'Vorrat & Konservierung'
+    'Alle' | 'Deutsche Küche' | 'Mediterrane Küche' | 'Hausmittel' | 'Vorrat & Konservierung'
   >('Alle');
   const [seedingRecipes, setSeedingRecipes] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<HomesteadRecord<RecipePayload> | null>(null);
@@ -215,9 +215,14 @@ export const PantryView: React.FC = () => {
       if (recipeCategoryFilter === 'Mediterrane Küche' && r.payload.category !== 'Mediterrane Küche') {
         return false;
       }
+      if (recipeCategoryFilter === 'Hausmittel' && r.payload.category !== 'Hausmittel') {
+        return false;
+      }
       if (
         recipeCategoryFilter === 'Vorrat & Konservierung' &&
-        (r.payload.category === 'Deutsche Küche' || r.payload.category === 'Mediterrane Küche')
+        (r.payload.category === 'Deutsche Küche' ||
+          r.payload.category === 'Mediterrane Küche' ||
+          r.payload.category === 'Hausmittel')
       ) {
         return false;
       }
@@ -618,7 +623,7 @@ export const PantryView: React.FC = () => {
                   Neue Rezepte verfügbar ({missingRecipesCount}):
                 </strong>{' '}
                 <span className="text-neutral-700 dark:text-neutral-300">
-                  Ergänze deine Hof-Datenbank um alle Rezepte der deutschen &amp; mediterranen Küche sowie Vorrats-Klassiker.
+                  Ergänze deine Hof-Datenbank um alle Rezepte der deutschen &amp; mediterranen Küche, Hausmittel (Waschmittel, Erkältung, Salben) sowie Vorrats-Klassiker.
                 </span>
               </div>
               <button
@@ -647,7 +652,7 @@ export const PantryView: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="font-display text-base font-semibold flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#CF6432]" />
-                Rezeptdatenbank (Deutsche &amp; Mediterrane Küche + Vorrat) &amp; Zutatenrechner
+                Rezeptdatenbank (Küche, Vorrat &amp; Hausmittel) &amp; Zutatenrechner
               </h3>
               <span className="text-xs text-neutral-500">
                 {suggestedRecipes.length} Rezept(e) angezeigt
@@ -655,7 +660,7 @@ export const PantryView: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {(['Alle', 'Deutsche Küche', 'Mediterrane Küche', 'Vorrat & Konservierung'] as const).map((cat) => (
+              {(['Alle', 'Deutsche Küche', 'Mediterrane Küche', 'Hausmittel', 'Vorrat & Konservierung'] as const).map((cat) => (
                 <button
                   key={cat}
                   type="button"
@@ -720,6 +725,10 @@ export const PantryView: React.FC = () => {
                 'Kräuter',
                 'Zwetschgen',
                 'Johannisbeeren',
+                'Efeu',
+                'Rosskastanie',
+                'Erkältung',
+                'Honig',
               ].map((tag) => {
                 const active = availableCropInput.trim().toLowerCase() === tag.toLowerCase();
                 return (

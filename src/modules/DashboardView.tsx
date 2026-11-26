@@ -145,8 +145,11 @@ export const DashboardView: React.FC = () => {
           <h1 className="font-display text-lg sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight truncate">
             Guten Tag, {activeIdentity || 'Hof-Team'}
           </h1>
-          <p className="text-xs text-neutral-600 dark:text-neutral-400 truncate">
-            Mellenbach-Glasbach · {currentPheno.phase} ({currentPheno.indicatorPlant})
+          <p
+            className="text-xs text-neutral-600 dark:text-neutral-400 truncate"
+            title={`Phänologische Jahreszeit nach DWD: Statt starrer Kalenderdaten zeigt die Natur über eine Zeigerpflanze (${currentPheno.indicatorPlant}) den echten biologischen Entwicklungsstand im Jahr an.`}
+          >
+            Mellenbach-Glasbach · {currentPheno.phase} · Natur-Zeiger: {currentPheno.indicatorPlant}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 shrink-0">

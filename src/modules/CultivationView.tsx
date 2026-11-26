@@ -23,6 +23,7 @@ import {
   MONTHLY_GARDEN_CALENDAR,
   PHENOLOGICAL_PHASES,
   buildStarterPlants,
+  getTreeIdentificationFallback,
   suggestCropRotation,
 } from '../data/botanicalCatalog';
 import {
@@ -212,29 +213,45 @@ export const CultivationView: React.FC = () => {
     }
   };
 
+  const [treeGroupFilter, setTreeGroupFilter] = useState<'Alle' | 'Obst & Beeren' | 'Nüsse' | 'Gehölze'>('Alle');
+
+  const isTreeOrShrubRecord = (p: HomesteadRecord<PlantPayload>) =>
+    Boolean(p.payload.isTree) ||
+    p.payload.group === 'Obst & Beeren' ||
+    p.payload.group === 'Nüsse' ||
+    p.payload.group === 'Gehölze';
+
+  const treeCount = useMemo(() => activePlants.filter(isTreeOrShrubRecord).length, [activePlants]);
+
   const filteredPlants = useMemo(() => {
     return activePlants.filter((p) => {
-      if (
-        tab === 'trees' &&
-        !p.payload.isTree &&
-        p.payload.group !== 'Obst & Beeren' &&
-        p.payload.group !== 'Nüsse' &&
-        p.payload.group !== 'Gehölze'
-      ) {
-        return false;
+      if (tab === 'trees') {
+        if (!isTreeOrShrubRecord(p)) return false;
+        if (treeGroupFilter !== 'Alle' && p.payload.group !== treeGroupFilter) return false;
+      } else {
+        if (groupFilter !== 'Alle' && p.payload.group !== groupFilter) return false;
       }
-      if (groupFilter !== 'Alle' && p.payload.group !== groupFilter) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
+        const fb = getTreeIdentificationFallback(p.payload.species, p.title);
+        const leaf = (p.payload.leafShape || fb?.leafShape || '').toLowerCase();
+        const bark = (p.payload.barkAndBuds || fb?.barkAndBuds || '').toLowerCase();
+        const traits = (p.payload.identificationTraits || fb?.identificationTraits || '').toLowerCase();
+        const uses = (p.payload.practicalUses || fb?.practicalUses || p.payload.usage || '').toLowerCase();
         return (
           p.title.toLowerCase().includes(q) ||
           p.payload.species.toLowerCase().includes(q) ||
-          p.payload.variety.toLowerCase().includes(q)
+          p.payload.variety.toLowerCase().includes(q) ||
+          p.payload.description.toLowerCase().includes(q) ||
+          leaf.includes(q) ||
+          bark.includes(q) ||
+          traits.includes(q) ||
+          uses.includes(q)
         );
       }
       return true;
     });
-  }, [activePlants, tab, groupFilter, search]);
+  }, [activePlants, tab, groupFilter, treeGroupFilter, search]);
 
   const compareList = useMemo(
     () => activePlants.filter((p) => compareIds.includes(p.id)),
@@ -260,7 +277,15 @@ export const CultivationView: React.FC = () => {
 
   const openEditPlant = (rec: HomesteadRecord<PlantPayload>) => {
     setEditingPlant(rec);
-    setPlantForm({ ...EMPTY_PLANT, ...rec.payload });
+    const fb = getTreeIdentificationFallback(rec.payload.species, rec.title);
+    setPlantForm({
+      ...EMPTY_PLANT,
+      ...rec.payload,
+      leafShape: rec.payload.leafShape || fb?.leafShape || '',
+      barkAndBuds: rec.payload.barkAndBuds || fb?.barkAndBuds || '',
+      identificationTraits: rec.payload.identificationTraits || fb?.identificationTraits || '',
+      practicalUses: rec.payload.practicalUses || fb?.practicalUses || '',
+    });
     setPlantModal(true);
   };
 
@@ -583,10 +608,10 @@ export const CultivationView: React.FC = () => {
         onChange={(id) => setTab(id as typeof tab)}
         tabs={[
           { id: 'varieties', label: `Sorten (${activePlants.length})` },
+          { id: 'trees', label: `Bäume & Gehölze (${treeCount})` },
           { id: 'season', label: 'Saisonkalender & Phänologie' },
           { id: 'beds', label: `Beete & Pflanzfolge (${activePlantings.length})` },
           { id: 'seeds', label: `Saatgut (${activeSeeds.length})` },
-          { id: 'trees', label: 'Obstbäume & Gehölze' },
         ]}
       />
 
@@ -600,7 +625,11 @@ export const CultivationView: React.FC = () => {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Pflanze oder Sorte suchen…"
+                placeholder={
+                  tab === 'trees'
+                    ? 'Baum, Blattform, Rinde oder Nutzen (z.B. Waschmittel, gefiedert)…'
+                    : 'Pflanze, Sorte oder Eigenschaft suchen…'
+                }
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-sm"
               />
             </div>
@@ -616,6 +645,19 @@ export const CultivationView: React.FC = () => {
                     {g.group}
                   </option>
                 ))}
+                <option value="Gehölze">Gehölze (Wald-, Nutz- &amp; Klettergehölze)</option>
+              </select>
+            )}
+            {tab === 'trees' && (
+              <select
+                value={treeGroupFilter}
+                onChange={(e) => setTreeGroupFilter(e.target.value as typeof treeGroupFilter)}
+                className="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-sm"
+              >
+                <option value="Alle">Alle Bäume &amp; Gehölze ({treeCount})</option>
+                <option value="Gehölze">Wald-, Park- &amp; Nutzgehölze (Eiche, Fichte, Efeu…)</option>
+                <option value="Nüsse">Nussbäume (Walnuss, Haselnuss, Esskastanie)</option>
+                <option value="Obst & Beeren">Obstbäume &amp; Beerensträucher</option>
               </select>
             )}
           </div>
@@ -625,10 +667,10 @@ export const CultivationView: React.FC = () => {
               <div className="text-xs space-y-0.5">
                 <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-[#3B6912] dark:text-[#BBE774]" />
-                  {missingStarterCount} weitere Obst-, Gemüse-, Nuss- & Pilzeinträge verfügbar
+                  {missingStarterCount} weitere Baum-, Gehölz-, Obst-, Gemüse- &amp; Pilzeinträge verfügbar
                 </div>
                 <p className="text-neutral-600 dark:text-neutral-300">
-                  Inklusive Kirsche, Heidelbeere, Walnuss, Haselnuss, Esskastanie, Austernseitling, Shiitake, Kohlrabi, Lauch, Brokkoli & Nachbarschaftstipps.
+                  Inklusive heimischer Bäume mit Blattform &amp; Rinden-Erkennung (Eiche, Buche, Birke, Fichte, Tanne, Rosskastanie, Efeu), Obst &amp; Mischkultur-Tipps.
                 </p>
               </div>
               <button
@@ -710,25 +752,68 @@ export const CultivationView: React.FC = () => {
                             </div>
                           </dl>
 
-                          {(p.payload.goodNeighbors || p.payload.badNeighbors || p.payload.careTip) && (
-                            <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 space-y-1 text-[11px]">
-                              {p.payload.goodNeighbors && (
-                                <div className="text-[#233A29] dark:text-[#BBE774]">
-                                  <strong>Gute Nachbarn:</strong> {p.payload.goodNeighbors}
-                                </div>
-                              )}
-                              {p.payload.badNeighbors && (
-                                <div className="text-[#CF6432]">
-                                  <strong>Lieber trennen von:</strong> {p.payload.badNeighbors}
-                                </div>
-                              )}
-                              {p.payload.careTip && (
-                                <div className="text-neutral-600 dark:text-neutral-300 bg-[#F7F7F5] dark:bg-[#0F1412] rounded-lg px-2.5 py-1.5">
-                                  <strong>Tipp:</strong> {p.payload.careTip}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                          {(() => {
+                            const fb = getTreeIdentificationFallback(p.payload.species, p.title);
+                            const leafShape = p.payload.leafShape || fb?.leafShape;
+                            const barkAndBuds = p.payload.barkAndBuds || fb?.barkAndBuds;
+                            const idTraits = p.payload.identificationTraits || fb?.identificationTraits;
+                            const practicalUses = p.payload.practicalUses || fb?.practicalUses;
+                            const showTreeDetails =
+                              (tab === 'trees' || isTreeOrShrubRecord(p)) &&
+                              Boolean(leafShape || barkAndBuds || idTraits || practicalUses);
+
+                            return (
+                              <>
+                                {showTreeDetails && (
+                                  <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 space-y-1.5 text-[11px] bg-[#233A29]/[0.04] dark:bg-[#BBE774]/[0.06] rounded-xl p-2.5">
+                                    <div className="font-semibold text-[#233A29] dark:text-[#BBE774]">
+                                      Erkennungsmerkmale &amp; Nutzen
+                                    </div>
+                                    {leafShape && (
+                                      <div className="text-neutral-700 dark:text-neutral-300">
+                                        <strong>Blatt / Nadeln:</strong> {leafShape}
+                                      </div>
+                                    )}
+                                    {barkAndBuds && (
+                                      <div className="text-neutral-700 dark:text-neutral-300">
+                                        <strong>Rinde &amp; Knospen:</strong> {barkAndBuds}
+                                      </div>
+                                    )}
+                                    {idTraits && (
+                                      <div className="text-neutral-700 dark:text-neutral-300">
+                                        <strong>Frucht / Verwechslung:</strong> {idTraits}
+                                      </div>
+                                    )}
+                                    {practicalUses && (
+                                      <div className="text-[#3B6912] dark:text-[#BBE774]">
+                                        <strong>Alltags- &amp; Heilnutzen:</strong> {practicalUses}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {(p.payload.goodNeighbors || p.payload.badNeighbors || p.payload.careTip) && (
+                                  <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 space-y-1 text-[11px]">
+                                    {p.payload.goodNeighbors && (
+                                      <div className="text-[#233A29] dark:text-[#BBE774]">
+                                        <strong>Gute Nachbarn:</strong> {p.payload.goodNeighbors}
+                                      </div>
+                                    )}
+                                    {p.payload.badNeighbors && (
+                                      <div className="text-[#CF6432]">
+                                        <strong>Lieber trennen von:</strong> {p.payload.badNeighbors}
+                                      </div>
+                                    )}
+                                    {p.payload.careTip && (
+                                      <div className="text-neutral-600 dark:text-neutral-300 bg-[#F7F7F5] dark:bg-[#0F1412] rounded-lg px-2.5 py-1.5">
+                                        <strong>Tipp:</strong> {p.payload.careTip}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                           <button
@@ -919,8 +1004,11 @@ export const CultivationView: React.FC = () => {
                   <div className="text-xs text-neutral-500">{ph.typicalMonths}</div>
                   <h3 className="font-display text-base font-bold">{ph.phase}</h3>
                   <div className="text-xs font-medium text-[#3B6912] dark:text-[#BBE774]">
-                    Zeigerpflanze: {ph.indicatorPlant}
+                    Natur-Zeiger (DWD): {ph.indicatorPlant}
                   </div>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-snug">
+                    Dieses Entwicklungsstadium in der Natur (z. B. Blüte, Fruchtreife oder Laubfall) markiert biologisch den Beginn dieser Jahreszeit vor Ort.
+                  </p>
                   <p className="text-xs text-neutral-600 dark:text-neutral-400">{ph.thuringiaTimingNote}</p>
                   <ul className="text-xs space-y-1 pt-2 border-t border-neutral-100 dark:border-neutral-800 list-disc list-inside text-neutral-700 dark:text-neutral-300">
                     {ph.gardenTasks.map((t) => (
@@ -1482,6 +1570,9 @@ export const CultivationView: React.FC = () => {
                 ['Erntezeit', (p: PlantPayload) => p.harvestWindow],
                 ['Nährstoffbedarf', (p: PlantPayload) => p.nutrientNeed],
                 ['Standort & Wasser', (p: PlantPayload) => `${p.lightNeed || '—'} / ${p.waterNeed || '—'}`],
+                ['Blattform / Nadeln', (p: PlantPayload) => p.leafShape || getTreeIdentificationFallback(p.species)?.leafShape || '—'],
+                ['Rinde & Knospen', (p: PlantPayload) => p.barkAndBuds || getTreeIdentificationFallback(p.species)?.barkAndBuds || '—'],
+                ['Alltags- & Heilnutzen', (p: PlantPayload) => p.practicalUses || getTreeIdentificationFallback(p.species)?.practicalUses || p.usage],
                 ['Geschmack', (p: PlantPayload) => p.taste],
                 ['Lagerfähigkeit', (p: PlantPayload) => p.storageLife],
                 ['Verarbeitung', (p: PlantPayload) => p.processingSuitability],
@@ -1704,11 +1795,51 @@ export const CultivationView: React.FC = () => {
                 />
               </div>
               <div className="sm:col-span-3">
-                <label className="block text-xs font-medium mb-1">Schnittmaßnahmen & Winterschutz</label>
+                <label className="block text-xs font-medium mb-1">Schnittmaßnahmen &amp; Winterschutz</label>
                 <input
                   type="text"
                   value={plantForm.pruningNotes || ''}
                   onChange={(e) => setPlantForm({ ...plantForm, pruningNotes: e.target.value })}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-medium mb-1">Erkennungsmerkmal: Blattform / Nadeln</label>
+                <input
+                  type="text"
+                  value={plantForm.leafShape || ''}
+                  onChange={(e) => setPlantForm({ ...plantForm, leafShape: e.target.value })}
+                  placeholder="z.B. 5-lappig handförmig, gegenständig oder 2 Nadeln im Paar"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-medium mb-1">Erkennungsmerkmal: Rinde, Stamm &amp; Knospen</label>
+                <input
+                  type="text"
+                  value={plantForm.barkAndBuds || ''}
+                  onChange={(e) => setPlantForm({ ...plantForm, barkAndBuds: e.target.value })}
+                  placeholder="z.B. glatte silbergraue Elefantenhaut, tiefschwarze Winterknospen"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-medium mb-1">Früchte / Zapfen &amp; Verwechslungs-Check</label>
+                <input
+                  type="text"
+                  value={plantForm.identificationTraits || ''}
+                  onChange={(e) => setPlantForm({ ...plantForm, identificationTraits: e.target.value })}
+                  placeholder="z.B. gestielte Eicheln im Becher, Unterschied Eibe vs. Weißtanne"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-xs font-medium mb-1">Alltags-, Holz-, Heil- &amp; Haushaltsnutzen</label>
+                <input
+                  type="text"
+                  value={plantForm.practicalUses || ''}
+                  onChange={(e) => setPlantForm({ ...plantForm, practicalUses: e.target.value })}
+                  placeholder="z.B. Waschmittel, Wipfelsirup, Tee, Zaunholz, Bienenweide"
                   className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-xs"
                 />
               </div>
