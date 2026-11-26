@@ -16,7 +16,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health' && request.method === 'GET') {
-      return handleHealth();
+      return handleHealth(env);
     }
 
     if (url.pathname === '/api/assistant' && request.method === 'POST') {

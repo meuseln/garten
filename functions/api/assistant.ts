@@ -102,7 +102,10 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   const apiKey = context.env.GEMINI_API_KEY;
   if (!apiKey) {
     return Response.json(
-      { error: 'GEMINI_API_KEY ist in Cloudflare Pages unter Settings -> Environment variables nicht hinterlegt.' },
+      {
+        error:
+          'GEMINI_API_KEY fehlt im Cloudflare Worker: Bitte unter Workers & Pages → garten → Settings → Variables and secrets (oben bei Runtime, nicht unter Build!) als Typ „Secret“ hinterlegen.',
+      },
       { status: 503 }
     );
   }
