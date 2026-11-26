@@ -502,6 +502,7 @@ export interface DocumentPayload {
   externalUrl: string;
   notes: string;
   mapItems?: GardenMapItem[];
+  sunCompassOffsetDeg?: number;
   sharedDashboardLayout?: DashboardCardConfig[];
   mealPlan?: Record<string, MealPlanDayEntry>;
 }
@@ -548,6 +549,7 @@ export interface WeatherForecastDay {
   snowfallSum: number;
   windSpeedMax: number;
   uvIndexMax: number;
+  sunshineHours?: number;
   sunrise: string;
   sunset: string;
 }
@@ -595,6 +597,7 @@ export interface WeatherData {
     precipProbMax: number;
     snowProbMax: number;
     uvIndexMax: number;
+    sunshineHours?: number;
     sunrise: string;
     sunset: string;
   };

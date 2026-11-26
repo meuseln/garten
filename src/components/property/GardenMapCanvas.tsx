@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
+  Compass,
   Grid3x3,
   MapPin,
   MousePointer,
@@ -9,8 +10,10 @@ import {
   Save,
   Sprout,
   Square,
+  Sun,
   Trash2,
   Type,
+  Wind,
 } from 'lucide-react';
 import { useHomestead } from '../../context/HomesteadContext';
 import type { GardenMapItem } from '../../types/homestead';
@@ -44,13 +47,19 @@ export const GardenMapCanvas: React.FC = () => {
   );
 
   const [items, setItems] = useState<GardenMapItem[]>([]);
+  const [compassOffsetDeg, setCompassOffsetDeg] = useState<number>(0);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Sync from Firestore when document loads/updates remotely unless user has unsaved edits
   useEffect(() => {
-    if (!hasUnsavedChanges && mapDoc?.payload?.mapItems) {
-      setItems(mapDoc.payload.mapItems);
+    if (!hasUnsavedChanges && mapDoc?.payload) {
+      if (mapDoc.payload.mapItems) {
+        setItems(mapDoc.payload.mapItems);
+      }
+      if (typeof mapDoc.payload.sunCompassOffsetDeg === 'number') {
+        setCompassOffsetDeg(mapDoc.payload.sunCompassOffsetDeg);
+      }
     }
   }, [mapDoc, hasUnsavedChanges]);
 
@@ -59,6 +68,14 @@ export const GardenMapCanvas: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAerialOverlay, setShowAerialOverlay] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
+  const [showSunPath, setShowSunPath] = useState(true);
+  const [sunSeason, setSunSeason] = useState<'spring' | 'summer' | 'autumn'>(() => {
+    const m = new Date().getMonth();
+    if (m >= 5 && m <= 7) return 'summer';
+    if (m >= 8 && m <= 10) return 'autumn';
+    return 'spring';
+  });
+  const [sunHour, setSunHour] = useState<number>(13);
 
   // Drawing states
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -238,6 +255,7 @@ export const GardenMapCanvas: React.FC = () => {
         externalUrl: '',
         notes: 'Interaktive Grundstückskarte Karl-Marx-Str. 113 (Originale Schemazeichnung)',
         mapItems: items,
+        sunCompassOffsetDeg: compassOffsetDeg,
       };
       if (mapDoc) {
         await updateRecord('documents', GARDEN_MAP_DOC_ID, 'Gartenkarte Karl-Marx-Str. 113', payload, mapDoc.updatedAtMs);
@@ -250,6 +268,91 @@ export const GardenMapCanvas: React.FC = () => {
       setSaving(false);
     }
   };
+
+  // --- Interactive Solar Geometry for Mellenbach-Glasbach (50.6° N) ---
+  const sunCalculations = useMemo(() => {
+    const seasonParams = {
+      spring: { label: 'Frühjahr (April)', sunriseH: 6.3, sunsetH: 19.8, sunriseAz: 78, sunsetAz: 282, maxElev: 49 },
+      summer: { label: 'Sommer (Juni)', sunriseH: 5.1, sunsetH: 21.3, sunriseAz: 52, sunsetAz: 308, maxElev: 62 },
+      autumn: { label: 'Herbst (Sept/Okt)', sunriseH: 7.0, sunsetH: 18.5, sunriseAz: 95, sunsetAz: 265, maxElev: 36 },
+    }[sunSeason];
+
+    const cx = 710;
+    const cy = 535;
+    const rx = 620;
+    const ry = 445;
+
+    const azToPoint = (azDeg: number, scale = 1) => {
+      const deg = azDeg + compassOffsetDeg;
+      const rad = (deg * Math.PI) / 180;
+      return {
+        x: Math.round(cx + Math.sin(rad) * rx * scale),
+        y: Math.round(cy - Math.cos(rad) * ry * scale),
+      };
+    };
+
+    const clampedHour = Math.max(seasonParams.sunriseH, Math.min(seasonParams.sunsetH, sunHour));
+    const dayFraction = (clampedHour - seasonParams.sunriseH) / (seasonParams.sunsetH - seasonParams.sunriseH);
+    const currentAz = seasonParams.sunriseAz + dayFraction * (seasonParams.sunsetAz - seasonParams.sunriseAz);
+    const currentElev = Math.max(6, Math.sin(dayFraction * Math.PI) * seasonParams.maxElev);
+
+    const arcPoints: Array<{ x: number; y: number }> = [];
+    const steps = 28;
+    for (let i = 0; i <= steps; i++) {
+      const az = seasonParams.sunriseAz + (i / steps) * (seasonParams.sunsetAz - seasonParams.sunriseAz);
+      arcPoints.push(azToPoint(az));
+    }
+
+    const sunPos = azToPoint(currentAz);
+    const sunrisePos = azToPoint(seasonParams.sunriseAz);
+    const noonPos = azToPoint(180);
+    const sunsetPos = azToPoint(seasonParams.sunsetAz);
+
+    // Shadow vector opposite to sun azimuth (projected from Wohnhaus around 1110, 520)
+    const oppAzRad = ((currentAz + 180 + compassOffsetDeg) * Math.PI) / 180;
+    const shadowFactor = Math.min(220, Math.max(45, Math.round((1 / Math.tan((currentElev * Math.PI) / 180)) * 72)));
+    const sdx = Math.round(Math.sin(oppAzRad) * shadowFactor);
+    const sdy = Math.round(-Math.cos(oppAzRad) * shadowFactor);
+
+    // Wohnhaus approximate footprint polygon (matching image_6db0e6d5.png)
+    const houseCorners = [
+      { x: 1035, y: 345 },
+      { x: 1290, y: 425 },
+      { x: 1200, y: 690 },
+      { x: 945, y: 605 },
+    ];
+    const shadowHull = houseCorners
+      .map((p) => `${p.x + sdx},${p.y + sdy}`)
+      .join(' ');
+
+    const compassDirLabel =
+      currentAz < 115 ? 'Osten (Morgensonne)' : currentAz < 155 ? 'Südost (Vormittag)' : currentAz <= 205 ? 'Süden (Mittagssonne)' : currentAz <= 245 ? 'Südwest (Nachmittag)' : 'Westen (Abendsonne)';
+
+    const zoneTip =
+      currentAz < 130
+        ? 'Morgensonne trifft zuerst Süd-Garten, Wohnhaus-Ostseite & obere Terrasse.'
+        : currentAz <= 215
+        ? 'Volle Mittagssonne auf der Sonnenseite am Wohnhaus, Terrasse & im Unteren Süd-Garten — die Nordseite des Hauses bleibt kühl.'
+        : 'Lange Nachmittags- & Abendsonne scheint tief in den Oberen Garten (Hang) und auf die Westseite von Terrasse & Hof.';
+
+    const hourFmt = `${String(Math.floor(sunHour)).padStart(2, '0')}:${sunHour % 1 === 0.5 ? '30' : '00'}`;
+
+    return {
+      seasonParams,
+      arcPath: arcPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' '),
+      sunPos,
+      sunrisePos,
+      noonPos,
+      sunsetPos,
+      currentAz: Math.round(currentAz),
+      currentElev: Math.round(currentElev),
+      shadowHull,
+      compassDirLabel,
+      zoneTip,
+      hourFmt,
+      azToPoint,
+    };
+  }, [sunSeason, sunHour, compassOffsetDeg]);
 
   const loadSampleMarkers = () => {
     const samples: GardenMapItem[] = [
@@ -370,6 +473,19 @@ export const GardenMapCanvas: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => setShowSunPath((v) => !v)}
+            className={`min-h-[40px] px-3 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+              showSunPath
+                ? 'bg-[#FFC814]/25 border-[#D97706] text-[#78350F] dark:text-[#FDE68A]'
+                : 'border-neutral-200 dark:border-neutral-700'
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5 text-[#D97706]" />
+            Sonnenverlauf
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowGrid((v) => !v)}
             className={`min-h-[40px] px-3 rounded-xl border text-xs font-medium inline-flex items-center gap-1.5 ${
               showGrid
@@ -419,6 +535,104 @@ export const GardenMapCanvas: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Interactive Sun Path Controls */}
+      {showSunPath && (
+        <div className="bg-amber-50/80 dark:bg-[#241E12] border border-amber-300/70 dark:border-amber-700/50 rounded-2xl p-3 sm:p-4 space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-amber-900 dark:text-amber-200 inline-flex items-center gap-1.5 mr-1">
+                <Sun className="w-4 h-4 text-[#D97706]" />
+                Sonnenstand &amp; Sonnenseite:
+              </span>
+              {[
+                { id: 'spring' as const, label: 'Frühjahr' },
+                { id: 'summer' as const, label: 'Sommer' },
+                { id: 'autumn' as const, label: 'Herbst' },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSunSeason(s.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    sunSeason === s.id
+                      ? 'bg-[#D97706] text-white'
+                      : 'bg-white dark:bg-[#161D1A] border border-amber-200 dark:border-amber-800 text-neutral-700 dark:text-neutral-200'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+              <div className="h-4 w-px bg-amber-300/70 mx-1 hidden sm:block" />
+              {[
+                { h: 8.5, label: '08:30' },
+                { h: 13, label: '13:00' },
+                { h: 18, label: '18:00' },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setSunHour(preset.h)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-mono-num border ${
+                    Math.abs(sunHour - preset.h) < 0.3
+                      ? 'bg-[#233A29] text-white border-[#233A29]'
+                      : 'bg-white/80 dark:bg-[#161D1A] border-amber-200 dark:border-amber-800'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <label className="flex items-center gap-2 min-w-[200px]">
+                <span className="font-mono-num font-bold text-amber-900 dark:text-amber-200 whitespace-nowrap">
+                  {sunCalculations.hourFmt} Uhr
+                </span>
+                <input
+                  type="range"
+                  min={Math.ceil(sunCalculations.seasonParams.sunriseH)}
+                  max={Math.floor(sunCalculations.seasonParams.sunsetH)}
+                  step={0.5}
+                  value={sunHour}
+                  onChange={(e) => setSunHour(Number(e.target.value))}
+                  className="w-32 accent-[#D97706]"
+                />
+              </label>
+
+              <label className="flex items-center gap-2" title="Falls Norden feinjustiert werden soll">
+                <Compass className="w-3.5 h-3.5 text-amber-800 dark:text-amber-300 shrink-0" />
+                <span className="text-[11px] text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
+                  Nord-Ausrichtung ({compassOffsetDeg > 0 ? `+${compassOffsetDeg}` : compassOffsetDeg}°):
+                </span>
+                <input
+                  type="range"
+                  min={-45}
+                  max={45}
+                  step={1}
+                  value={compassOffsetDeg}
+                  onChange={(e) => {
+                    setCompassOffsetDeg(Number(e.target.value));
+                    setHasUnsavedChanges(true);
+                  }}
+                  className="w-24 accent-[#233A29]"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950/90 dark:text-amber-100/90 pt-1 border-t border-amber-200/70 dark:border-amber-800/50">
+            <span>
+              <strong>{sunCalculations.compassDirLabel}</strong> (Sonnenhöhe ~{sunCalculations.currentElev}°) ·{' '}
+              {sunCalculations.zoneTip}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-neutral-700 dark:text-neutral-300">
+              <Wind className="w-3.5 h-3.5 text-[#597CD4]" />
+              Hauptwind Schwarzatal: SW / W
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Tool usage hint */}
       <div className="text-xs text-neutral-600 dark:text-neutral-400 px-1">
@@ -490,6 +704,135 @@ export const GardenMapCanvas: React.FC = () => {
                 opacity="0.55"
                 style={{ pointerEvents: 'none' }}
               />
+            )}
+
+            {/* === INTERACTIVE SUN PATH, SUN SIDE & COMPASS OVERLAY === */}
+            {showSunPath && (
+              <g style={{ pointerEvents: 'none' }}>
+                <defs>
+                  <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#FBBF24" stopOpacity="0.85" />
+                    <stop offset="55%" stopColor="#F59E0B" stopOpacity="0.32" />
+                    <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+                  </radialGradient>
+                  <linearGradient id="sun-side-warm" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.24" />
+                    <stop offset="100%" stopColor="#FBBF24" stopOpacity="0.06" />
+                  </linearGradient>
+                </defs>
+
+                {/* Sonnenseite am Haus & Süd-Garten Warmth Highlight */}
+                <polygon
+                  points="865,455 985,485 950,605 1190,685 1120,895 835,805 895,605 815,575"
+                  fill="url(#sun-side-warm)"
+                  stroke="#D97706"
+                  strokeWidth="2"
+                  strokeDasharray="6 4"
+                />
+
+                {/* Dynamic House Shadow */}
+                <polygon
+                  points={sunCalculations.shadowHull}
+                  fill="#1E293B"
+                  fillOpacity="0.14"
+                />
+
+                {/* Sonnenseite & Schattenseite Labels */}
+                <g transform="translate(825, 622)">
+                  <rect x="0" y="0" width="235" height="28" rx="14" fill="#FFFBEB" stroke="#D97706" strokeWidth="1.8" />
+                  <text x="117" y="18.5" textAnchor="middle" fill="#92400E" fontSize="13.5" fontWeight="800">
+                    ☀ Sonnenseite Haus &amp; Süd-Garten
+                  </text>
+                </g>
+
+                <g transform="translate(995, 298)">
+                  <rect x="0" y="0" width="205" height="26" rx="13" fill="#EFF6FF" stroke="#64748B" strokeWidth="1.5" />
+                  <text x="102" y="17.5" textAnchor="middle" fill="#334155" fontSize="12.5" fontWeight="700">
+                    Schattenseite (Nord · Pilze/Beeren)
+                  </text>
+                </g>
+
+                {/* Full Solar Arc around Property */}
+                <path
+                  d={sunCalculations.arcPath}
+                  fill="none"
+                  stroke="#F59E0B"
+                  strokeWidth="4.5"
+                  strokeDasharray="12 8"
+                  strokeLinecap="round"
+                  opacity="0.82"
+                />
+
+                {/* Sunrise / Noon / Sunset Markers */}
+                <g>
+                  <circle cx={sunCalculations.sunrisePos.x} cy={sunCalculations.sunrisePos.y} r="7" fill="#FBBF24" stroke="#92400E" strokeWidth="2" />
+                  <rect x={sunCalculations.sunrisePos.x - 108} y={sunCalculations.sunrisePos.y - 34} width="102" height="24" rx="6" fill="#FFFFFF" stroke="#F59E0B" strokeWidth="1.4" />
+                  <text x={sunCalculations.sunrisePos.x - 57} y={sunCalculations.sunrisePos.y - 18} textAnchor="middle" fill="#92400E" fontSize="12" fontWeight="700">
+                    Aufgang (O)
+                  </text>
+
+                  <circle cx={sunCalculations.noonPos.x} cy={sunCalculations.noonPos.y} r="6.5" fill="#F59E0B" stroke="#78350F" strokeWidth="2" />
+                  <rect x={sunCalculations.noonPos.x - 58} y={sunCalculations.noonPos.y + 12} width="116" height="24" rx="6" fill="#FFFFFF" stroke="#F59E0B" strokeWidth="1.4" />
+                  <text x={sunCalculations.noonPos.x} y={sunCalculations.noonPos.y + 28} textAnchor="middle" fill="#92400E" fontSize="12" fontWeight="700">
+                    Mittag 13:00 (S)
+                  </text>
+
+                  <circle cx={sunCalculations.sunsetPos.x} cy={sunCalculations.sunsetPos.y} r="7" fill="#FB923C" stroke="#9A3412" strokeWidth="2" />
+                  <rect x={sunCalculations.sunsetPos.x + 12} y={sunCalculations.sunsetPos.y - 26} width="110" height="24" rx="6" fill="#FFFFFF" stroke="#FB923C" strokeWidth="1.4" />
+                  <text x={sunCalculations.sunsetPos.x + 67} y={sunCalculations.sunsetPos.y - 10} textAnchor="middle" fill="#9A3412" fontSize="12" fontWeight="700">
+                    Untergang (W)
+                  </text>
+                </g>
+
+                {/* Directional Sunlight Ray toward House & Garden */}
+                <line
+                  x1={sunCalculations.sunPos.x}
+                  y1={sunCalculations.sunPos.y}
+                  x2="900"
+                  y2="525"
+                  stroke="#F59E0B"
+                  strokeWidth="2.6"
+                  strokeDasharray="6 6"
+                  opacity="0.7"
+                />
+
+                {/* Active Sun Position Marker */}
+                <circle cx={sunCalculations.sunPos.x} cy={sunCalculations.sunPos.y} r="58" fill="url(#sun-glow)" />
+                <circle cx={sunCalculations.sunPos.x} cy={sunCalculations.sunPos.y} r="20" fill="#FBBF24" stroke="#B45309" strokeWidth="3" />
+                <text
+                  x={sunCalculations.sunPos.x}
+                  y={sunCalculations.sunPos.y + 5}
+                  textAnchor="middle"
+                  fill="#78350F"
+                  fontSize="12"
+                  fontWeight="900"
+                >
+                  {sunCalculations.hourFmt}
+                </text>
+
+                {/* Compass Rose + Prevailing Wind in clean Bottom-Left White Space */}
+                <g transform="translate(175, 835)">
+                  <rect x="-125" y="-120" width="265" height="215" rx="18" fill="#FFFFFF" fillOpacity="0.94" stroke="#CBD5E1" strokeWidth="1.8" />
+                  <g transform={`translate(-35, -30) rotate(${compassOffsetDeg})`}>
+                    <circle cx="0" cy="0" r="46" fill="#F8FAFC" stroke="#1E293B" strokeWidth="2" />
+                    <polygon points="0,-38 9,-6 0,-13 -9,-6" fill="#DC2626" />
+                    <polygon points="0,38 9,6 0,13 -9,6" fill="#64748B" />
+                    <text x="0" y="-49" textAnchor="middle" fill="#DC2626" fontSize="15" fontWeight="900">N</text>
+                    <text x="56" y="5" textAnchor="middle" fill="#1E293B" fontSize="13" fontWeight="800">O</text>
+                    <text x="0" y="61" textAnchor="middle" fill="#1E293B" fontSize="13" fontWeight="800">S</text>
+                    <text x="-56" y="5" textAnchor="middle" fill="#1E293B" fontSize="13" fontWeight="800">W</text>
+                  </g>
+                  <g transform="translate(40, -52)">
+                    <text x="0" y="0" fill="#0F172A" fontSize="13" fontWeight="800">Klima-Kompass</text>
+                    <text x="0" y="20" fill="#475569" fontSize="11.5">Süd = Hauptsonne</text>
+                    <text x="0" y="38" fill="#597CD4" fontSize="11.5" fontWeight="700">↗ Wind: SW / W</text>
+                    <text x="0" y="56" fill="#92400E" fontSize="11.5" fontWeight="700">☀ ~500 m NN</text>
+                  </g>
+                  <text x="-110" y="75" fill="#475569" fontSize="11.5">
+                    Gold = Sonnenbahn · Grau = Haus-Schatten
+                  </text>
+                </g>
+              </g>
             )}
 
             {/* === USER-DRAWN INTERACTIVE AREAS & LABELS === */}
