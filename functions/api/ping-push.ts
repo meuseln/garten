@@ -4,6 +4,9 @@ interface WorkerContext {
     FIREBASE_SERVICE_ACCOUNT_JSON?: string;
     [key: string]: unknown;
   };
+  ctx?: {
+    waitUntil: (promise: Promise<unknown>) => void;
+  };
 }
 
 interface ServiceAccountJson {
@@ -239,15 +242,32 @@ export async function handlePingPush(context: WorkerContext): Promise<Response> 
       return Response.json({ error: 'Kein verifiziertes Hofmitglied.' }, { status: 403 });
     }
 
-    const recipientName = callerMember.displayName === 'Nico' ? 'Chris' : 'Nico';
-    const recipient = members.find((m) => m.displayName === recipientName);
+    const body = (await context.request.json().catch(() => ({}))) as {
+      message?: string;
+      selfTest?: boolean;
+      delaySec?: number;
+    };
+    const isSelfTest = body.selfTest === true;
+    const delaySec = isSelfTest ? Math.min(8, Math.max(0, Number(body.delaySec) || 0)) : 0;
+
+    const recipientName = isSelfTest
+      ? callerMember.displayName
+      : callerMember.displayName === 'Nico'
+      ? 'Chris'
+      : 'Nico';
+    const recipient = isSelfTest
+      ? callerMember
+      : members.find((m) => m.displayName === recipientName);
+
     if (!recipient?.fcmToken) {
       return Response.json(
         {
           sent: false,
           configured: true,
           reason: 'no_recipient_token',
-          message: `${recipientName} hat noch keine Push-Berechtigung aktiviert.`,
+          message: isSelfTest
+            ? 'Für dein Gerät ist noch kein Geräte-Token gespeichert. Bitte zuerst „Push-Berechtigung aktivieren“ drücken (VAPID-Key nötig).'
+            : `${recipientName} hat noch keine Push-Berechtigung aktiviert.`,
         },
         { status: 200 }
       );
@@ -261,55 +281,82 @@ export async function handlePingPush(context: WorkerContext): Promise<Response> 
       );
     }
 
-    const body = (await context.request.json().catch(() => ({}))) as { message?: string };
     const cleanBody =
       typeof body.message === 'string' && body.message.trim()
         ? body.message.trim().slice(0, 240)
         : `${callerMember.displayName} pingt dich! Schau kurz in Hof & Garten vorbei.`;
-    const title = `Ping von ${callerMember.displayName} · Hof & Garten`;
+    const title = isSelfTest
+      ? 'Ping-Test · Hof & Garten'
+      : `Ping von ${callerMember.displayName} · Hof & Garten`;
 
-    const accessToken = await getFcmAccessToken(sa);
-    const projectId = sa.project_id || FIREBASE_PROJECT_ID;
-    const fcmRes = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: {
-          token: recipient.fcmToken,
-          notification: {
-            title,
-            body: cleanBody,
-          },
-          data: {
-            title,
-            body: cleanBody,
-            url: '/',
-            fromName: callerMember.displayName,
-            toName: recipientName,
-          },
-          webpush: {
-            headers: {
-              Urgency: 'high',
-              TTL: '3600',
-            },
+    const recipientToken = recipient.fcmToken;
+    const sendFcmPush = async () => {
+      const accessToken = await getFcmAccessToken(sa);
+      const projectId = sa.project_id || FIREBASE_PROJECT_ID;
+      const fcmRes = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: {
+            token: recipientToken,
             notification: {
               title,
               body: cleanBody,
-              icon: '/pwa-192x192.png',
-              badge: '/pwa-192x192.png',
-              tag: 'homestead-ping',
             },
-            fcm_options: {
-              link: '/',
+            data: {
+              title,
+              body: cleanBody,
+              url: '/',
+              fromName: callerMember.displayName,
+              toName: recipientName,
+            },
+            webpush: {
+              headers: {
+                Urgency: 'high',
+                TTL: '3600',
+              },
+              notification: {
+                title,
+                body: cleanBody,
+                icon: '/pwa-192x192.png',
+                badge: '/pwa-192x192.png',
+                tag: isSelfTest ? 'homestead-ping-test' : 'homestead-ping',
+              },
+              fcm_options: {
+                link: '/',
+              },
             },
           },
-        },
-      }),
-    });
+        }),
+      });
+      return fcmRes;
+    };
 
+    if (isSelfTest && delaySec > 0) {
+      const delayedTask = (async () => {
+        await new Promise((resolve) => setTimeout(resolve, delaySec * 1000));
+        const res = await sendFcmPush();
+        if (!res.ok) {
+          console.error('Delayed self-test FCM error:', res.status, await res.text());
+        }
+      })().catch((err) => {
+        console.error('Delayed self-test error:', err);
+      });
+
+      if (context.ctx?.waitUntil) {
+        context.ctx.waitUntil(delayedTask);
+      }
+
+      return Response.json(
+        { sent: true, scheduled: true, delaySec, configured: true, toName: recipientName },
+        { status: 200 }
+      );
+    }
+
+    const fcmRes = await sendFcmPush();
     if (!fcmRes.ok) {
       const errText = await fcmRes.text();
       return Response.json(

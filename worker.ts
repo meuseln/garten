@@ -12,7 +12,11 @@ interface WorkerEnv {
 }
 
 export default {
-  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: WorkerEnv,
+    ctx: { waitUntil: (promise: Promise<unknown>) => void }
+  ): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/health' && request.method === 'GET') {
@@ -24,7 +28,7 @@ export default {
     }
 
     if (url.pathname === '/api/ping-push' && request.method === 'POST') {
-      return handlePingPush({ request, env });
+      return handlePingPush({ request, env, ctx });
     }
 
     return env.ASSETS.fetch(request);

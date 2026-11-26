@@ -188,6 +188,7 @@ interface HomesteadContextValue {
   updateMealPlan: (plan: Record<string, MealPlanDayEntry>) => Promise<void>;
   requestPushPermission: () => Promise<{ granted: boolean; reason?: string }>;
   sendTestNotification: () => Promise<{ ok: boolean; reason?: string }>;
+  sendDelayedSelfPush: () => Promise<{ ok: boolean; message: string }>;
 
   // Ping & Notifications
   pings: PingRecord[];
@@ -1427,6 +1428,57 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       : { ok: false, reason: 'System-Mitteilung konnte nicht angezeigt werden (bitte Fokus/Nicht stören prüfen).' };
   };
 
+  const sendDelayedSelfPush = async (): Promise<{ ok: boolean; message: string }> => {
+    if (!firebaseUser) {
+      return { ok: false, message: 'Bitte zuerst anmelden.' };
+    }
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      const perm = await requestPushPermission();
+      if (!perm.granted) {
+        return { ok: false, message: perm.reason || 'Push-Berechtigung fehlt.' };
+      }
+    }
+    try {
+      const idToken = await firebaseUser.getIdToken();
+      const res = await fetch('/api/ping-push', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          selfTest: true,
+          delaySec: 5,
+          message: 'Test-Ping bei geschlossener App erfolgreich zugestellt!',
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        sent?: boolean;
+        scheduled?: boolean;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        return { ok: false, message: data.error || 'Server-Push konnte nicht geplant werden.' };
+      }
+      if (!data.sent) {
+        return {
+          ok: false,
+          message: data.message || 'Server-Push noch nicht vollständig eingerichtet.',
+        };
+      }
+      return {
+        ok: true,
+        message: 'Server-Push kommt in 5 Sekunden — schließe Hof & Garten jetzt komplett!',
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : 'Verbindung zu /api/ping-push fehlgeschlagen.',
+      };
+    }
+  };
+
   // 1-Click Ping
   const sendPing = async () => {
     if (!firebaseUser || !activeIdentity || !otherIdentity) return;
@@ -1827,6 +1879,7 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updateMealPlan,
         requestPushPermission,
         sendTestNotification,
+        sendDelayedSelfPush,
         pings,
         pingCooldownSec,
         sendPing,

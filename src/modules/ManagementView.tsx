@@ -90,6 +90,9 @@ export const ManagementView: React.FC = () => {
     updateNotificationSettings,
     requestPushPermission,
     sendTestNotification,
+    sendDelayedSelfPush,
+    firebaseUser,
+    members,
     managementTab,
     setManagementTab,
     deleteOwnAccount,
@@ -1309,6 +1312,8 @@ export const ManagementView: React.FC = () => {
             const currentPerm: NotificationPermission | 'unsupported' = notifSupported
               ? Notification.permission
               : 'unsupported';
+            const ownMember = members.find((m) => m.uid === firebaseUser?.uid);
+            const hasFcmToken = Boolean(ownMember?.fcmToken);
             void permRefresh;
             return (
               <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4">
@@ -1336,6 +1341,11 @@ export const ManagementView: React.FC = () => {
                           : currentPerm === 'unsupported'
                           ? 'Erst nach Home-Bildschirm verfügbar'
                           : 'Noch nicht aktiviert'}
+                      </strong>
+                      {' · '}
+                      Geräte-Token:{' '}
+                      <strong className={hasFcmToken ? 'text-[#3B6912] dark:text-[#BBE774]' : 'text-neutral-600 dark:text-neutral-400'}>
+                        {hasFcmToken ? 'Gespeichert' : 'Fehlt (VAPID prüfen)'}
                       </strong>
                     </p>
                   </div>
@@ -1368,7 +1378,18 @@ export const ManagementView: React.FC = () => {
                       }}
                       className="min-h-[44px] px-3.5 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"
                     >
-                      Test-Push senden
+                      Lokal testen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await sendDelayedSelfPush();
+                        setPermRefresh((n) => n + 1);
+                        pushToast(res.ok ? 'success' : 'warning', res.message);
+                      }}
+                      className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#597CD4] text-white text-xs font-semibold hover:opacity-90"
+                    >
+                      Server-Push in 5s (App schließen)
                     </button>
                   </div>
                 </div>
