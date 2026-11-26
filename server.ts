@@ -5,6 +5,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import { handlePingPush } from './functions/api/ping-push';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -129,6 +130,31 @@ async function generateWithFallback(ai: GoogleGenAI, prompt: string) {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'hof-und-garten' });
+});
+
+app.post('/api/ping-push', async (req, res) => {
+  try {
+    const headers = new Headers();
+    const authHeader = req.headers.authorization;
+    if (authHeader) headers.set('Authorization', authHeader);
+    headers.set('Content-Type', 'application/json');
+
+    const webReq = new Request(`http://localhost:${PORT}/api/ping-push`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(req.body || {}),
+    });
+
+    const webRes = await handlePingPush({
+      request: webReq,
+      env: { FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON },
+    });
+    const text = await webRes.text();
+    res.status(webRes.status).type('application/json').send(text);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Push-Fehler';
+    res.status(500).json({ error: message });
+  }
 });
 
 app.post('/api/assistant', async (req, res) => {

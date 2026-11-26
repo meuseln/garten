@@ -1374,9 +1374,9 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const messaging = await getMessagingInstance();
       if (messaging) {
         try {
-          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-            scope: '/firebase-cloud-messaging-push-scope',
-          });
+          const swReg =
+            (await navigator.serviceWorker.getRegistration('/')) ||
+            (await navigator.serviceWorker.ready);
           const token = await getToken(messaging, {
             vapidKey,
             serviceWorkerRegistration: swReg,
@@ -1399,7 +1399,9 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     return {
       granted: true,
-      reason: 'Push-Berechtigung aktiv! Live-Pings werden ab sofort als Mitteilung angezeigt.',
+      reason: vapidKey
+        ? 'Push-Berechtigung aktiv! Live-Pings werden ab sofort als Mitteilung angezeigt.'
+        : 'Push-Berechtigung aktiv! Für Hintergrund-Push bei geschlossener App noch VITE_FIREBASE_VAPID_KEY beim Build hinterlegen.',
     };
   };
 
@@ -1449,7 +1451,32 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
       setPingCooldownSec(30);
       await writeAuditLog('ping', 'pings', pingId, `${activeIdentity} hat ${otherIdentity} angepingt`);
-      pushToast('success', `Ping an ${otherIdentity} gesendet.`);
+
+      let pushDelivered = false;
+      try {
+        const idToken = await firebaseUser.getIdToken();
+        const res = await fetch('/api/ping-push', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ message }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { sent?: boolean };
+          pushDelivered = Boolean(data.sent);
+        }
+      } catch {
+        // Ignore network errors on background push; Firestore ping is already saved
+      }
+
+      pushToast(
+        'success',
+        pushDelivered
+          ? `Ping & Push-Mitteilung an ${otherIdentity} gesendet.`
+          : `Ping an ${otherIdentity} gesendet.`
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `pings/${pingId}`);
     }
