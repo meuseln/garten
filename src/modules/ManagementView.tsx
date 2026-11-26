@@ -16,7 +16,11 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-react';
-import { DEFAULT_NOTIFICATION_SETTINGS, useHomestead } from '../context/HomesteadContext';
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  type ManagementTab,
+  useHomestead,
+} from '../context/HomesteadContext';
 import {
   downloadIcsFile,
   exportCsv,
@@ -25,6 +29,7 @@ import {
   exportSummaryPdf,
 } from '../lib/exports';
 import { FIREBASE_DATABASE_ID, FIREBASE_PROJECT_ID } from '../lib/firebase';
+import { usePWAInstall } from '../lib/offlineSync';
 import {
   EmptyState,
   Modal,
@@ -43,13 +48,7 @@ import type {
   UserNotificationSettings,
 } from '../types/homestead';
 
-type ManagementTab =
-  | 'finanzen'
-  | 'werkzeuge'
-  | 'einkauf'
-  | 'notfall'
-  | 'bericht'
-  | 'einstellungen';
+// ManagementTab imported from HomesteadContext
 
 function addDaysIso(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T12:00:00');
@@ -90,11 +89,17 @@ export const ManagementView: React.FC = () => {
     deleteRecordPermanently,
     updateNotificationSettings,
     requestPushPermission,
+    sendTestNotification,
+    managementTab,
+    setManagementTab,
     deleteOwnAccount,
     pushToast,
   } = useHomestead();
 
-  const [tab, setTab] = useState<ManagementTab>('finanzen');
+  const { isIOS, isInstalled } = usePWAInstall();
+  const [permRefresh, setPermRefresh] = useState(0);
+  const tab = managementTab;
+  const setTab = setManagementTab;
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentYearNum = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYearNum);
@@ -559,12 +564,12 @@ export const ManagementView: React.FC = () => {
 
       <SegmentedTabs
         tabs={[
-          { id: 'finanzen', label: 'Finanzen & Bedarf' },
+          { id: 'finanzen', label: 'Finanzen' },
           { id: 'werkzeuge', label: 'Werkzeuge' },
-          { id: 'einkauf', label: 'Einkauf & Dokumente' },
+          { id: 'einkauf', label: 'Einkauf & Doks' },
           { id: 'notfall', label: 'Urlaub & Notfall' },
-          { id: 'bericht', label: 'Jahresbericht & Exporte' },
-          { id: 'einstellungen', label: 'Einstellungen, Verlauf & Papierkorb' },
+          { id: 'bericht', label: 'Bericht & Export' },
+          { id: 'einstellungen', label: 'Einstellungen' },
         ]}
         activeTab={tab}
         onChange={(id) => setTab(id as ManagementTab)}
@@ -1299,106 +1304,163 @@ export const ManagementView: React.FC = () => {
       {tab === 'einstellungen' && (
         <div className="space-y-6">
           {/* Notification Settings */}
-          <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-lg font-bold flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-[#597CD4]" />
-                  Benachrichtigungen & Web-Push ({activeIdentity})
-                </h2>
-                <p className="text-xs text-neutral-500">
-                  Persönliche Einstellungen pro Konto · Auf iPhone nach „Zum Home-Bildschirm“ verfügbar
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  const res = await requestPushPermission();
-                  pushToast(
-                    res.granted ? 'success' : 'warning',
-                    res.reason || 'Push-Benachrichtigungen aktiviert.'
-                  );
-                }}
-                className="px-3.5 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold"
-              >
-                Push-Berechtigung aktivieren
-              </button>
-            </div>
+          {(() => {
+            const notifSupported = typeof Notification !== 'undefined';
+            const currentPerm: NotificationPermission | 'unsupported' = notifSupported
+              ? Notification.permission
+              : 'unsupported';
+            void permRefresh;
+            return (
+              <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-display text-lg font-bold flex items-center gap-2">
+                      <Bell className="w-4 h-4 text-[#597CD4]" />
+                      Benachrichtigungen & Web-Push ({activeIdentity})
+                    </h2>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Status auf diesem Gerät:{' '}
+                      <strong
+                        className={
+                          currentPerm === 'granted'
+                            ? 'text-[#3B6912] dark:text-[#BBE774]'
+                            : currentPerm === 'denied'
+                            ? 'text-[#CF6432]'
+                            : 'text-neutral-700 dark:text-neutral-300'
+                        }
+                      >
+                        {currentPerm === 'granted'
+                          ? 'Aktiv (erlaubt)'
+                          : currentPerm === 'denied'
+                          ? 'Blockiert'
+                          : currentPerm === 'unsupported'
+                          ? 'Erst nach Home-Bildschirm verfügbar'
+                          : 'Noch nicht aktiviert'}
+                      </strong>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await requestPushPermission();
+                        setPermRefresh((n) => n + 1);
+                        pushToast(
+                          res.granted ? 'success' : 'warning',
+                          res.reason || 'Push-Benachrichtigungen aktiviert.'
+                        );
+                      }}
+                      className="min-h-[44px] px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold"
+                    >
+                      {currentPerm === 'granted'
+                        ? 'Push-Status erneuern'
+                        : 'Push-Berechtigung aktivieren'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await sendTestNotification();
+                        setPermRefresh((n) => n + 1);
+                        pushToast(
+                          res.ok ? 'success' : 'warning',
+                          res.reason || 'Test-Mitteilung ausgelöst.'
+                        );
+                      }}
+                      className="min-h-[44px] px-3.5 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                      Test-Push senden
+                    </button>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-              <label className="flex items-center gap-2 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={notifPrefs.instantPush}
-                  onChange={(e) => updateNotifField({ ...notifPrefs, instantPush: e.target.checked })}
-                />
-                Sofortige Benachrichtigungen (inkl. Ping)
-              </label>
-              <label className="flex items-center gap-2 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={notifPrefs.dailySummary}
-                  onChange={(e) => updateNotifField({ ...notifPrefs, dailySummary: e.target.checked })}
-                />
-                Tägliche Zusammenfassung
-              </label>
-              <label className="flex items-center gap-2 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={notifPrefs.quietHoursEnabled}
-                  onChange={(e) =>
-                    updateNotifField({ ...notifPrefs, quietHoursEnabled: e.target.checked })
-                  }
-                />
-                Ruhezeiten ({notifPrefs.quietStart} – {notifPrefs.quietEnd})
-              </label>
-            </div>
+                {isIOS && !isInstalled && (
+                  <div className="p-3.5 rounded-xl bg-[#FFC814]/20 border border-[#FFC814]/50 text-xs text-neutral-900 dark:text-neutral-100 leading-relaxed">
+                    <strong>iPhone-Hinweis:</strong> Apple blockiert Web-Push im normalen Safari-Tab. Tippe unten auf <strong>Teilen → Zum Home-Bildschirm</strong> und öffne <strong>Hof & Garten</strong> über das Home-Screen-Icon — danach lässt sich die Push-Berechtigung direkt hier aktivieren.
+                  </div>
+                )}
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
-              {(
-                [
-                  ['general', 'Allgemein & Ping'],
-                  ['calendar', 'Kalender'],
-                  ['weather', 'Wetter'],
-                  ['garden', 'Garten'],
-                  ['animals', 'Tiere'],
-                  ['pantry', 'Vorräte'],
-                  ['projects', 'Projekte'],
-                ] as const
-              ).map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex items-center gap-1.5 p-2 rounded-lg bg-[#F7F7F5] dark:bg-[#0F1412] cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={notifPrefs.categories[key]}
-                    onChange={(e) =>
-                      updateNotifField({
-                        ...notifPrefs,
-                        categories: { ...notifPrefs.categories, [key]: e.target.checked },
-                      })
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-          </section>
+                {isIOS && isInstalled && currentPerm === 'denied' && (
+                  <div className="p-3.5 rounded-xl bg-[#CF6432]/15 border border-[#CF6432]/40 text-xs text-neutral-900 dark:text-neutral-100 leading-relaxed">
+                    Mitteilungen sind auf diesem iPhone blockiert. Öffne die iPhone-App <strong>Einstellungen → Mitteilungen → Hof & Garten</strong> und aktiviere „Mitteilungen erlauben“.
+                  </div>
+                )}
 
-          {/* Firebase & Netlify Deployment Reference */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                  <label className="flex items-center gap-2.5 min-h-[44px] p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.instantPush}
+                      onChange={(e) => updateNotifField({ ...notifPrefs, instantPush: e.target.checked })}
+                    />
+                    Sofortige Benachrichtigungen (inkl. Ping)
+                  </label>
+                  <label className="flex items-center gap-2.5 min-h-[44px] p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.dailySummary}
+                      onChange={(e) => updateNotifField({ ...notifPrefs, dailySummary: e.target.checked })}
+                    />
+                    Tägliche Zusammenfassung
+                  </label>
+                  <label className="flex items-center gap-2.5 min-h-[44px] p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.quietHoursEnabled}
+                      onChange={(e) =>
+                        updateNotifField({ ...notifPrefs, quietHoursEnabled: e.target.checked })
+                      }
+                    />
+                    Ruhezeiten ({notifPrefs.quietStart} – {notifPrefs.quietEnd})
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
+                  {(
+                    [
+                      ['general', 'Allgemein & Ping'],
+                      ['calendar', 'Kalender'],
+                      ['weather', 'Wetter'],
+                      ['garden', 'Garten'],
+                      ['animals', 'Tiere'],
+                      ['pantry', 'Vorräte'],
+                      ['projects', 'Projekte'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label
+                      key={key}
+                      className="flex items-center gap-1.5 min-h-[40px] p-2 rounded-lg bg-[#F7F7F5] dark:bg-[#0F1412] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs.categories[key]}
+                        onChange={(e) =>
+                          updateNotifField({
+                            ...notifPrefs,
+                            categories: { ...notifPrefs.categories, [key]: e.target.checked },
+                          })
+                        }
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* Firebase & Cloudflare Deployment Reference */}
           <section className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-2 text-xs">
             <h3 className="font-display text-base font-bold">
-              Projektkonfiguration (Firebase & GitHub/Netlify)
+              Projektkonfiguration (Firebase & Cloudflare Workers)
             </h3>
             <p className="text-neutral-600 dark:text-neutral-400">
               Firebase-Projekt: <code className="font-mono">{FIREBASE_PROJECT_ID}</code> · Datenbank:{' '}
               <code className="font-mono">{FIREBASE_DATABASE_ID}</code>
             </p>
             <p className="text-neutral-600 dark:text-neutral-400">
-              Für GitHub + Netlify Deployment sind <code className="font-mono">netlify.toml</code>,{' '}
-              <code className="font-mono">netlify/functions/assistant.ts</code> und{' '}
-              <code className="font-mono">DEPLOYMENT.md</code> im Repository eingerichtet.
+              Cloudflare Deployment läuft über <code className="font-mono">wrangler.jsonc</code> und{' '}
+              <code className="font-mono">worker.ts</code> (inkl. KI-Assistent unter{' '}
+              <code className="font-mono">/api/assistant</code>).
             </p>
           </section>
 

@@ -1,10 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  browserLocalPersistence,
   deleteUser,
+  indexedDBLocalPersistence,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut,
   type User,
@@ -138,6 +141,14 @@ export interface InAppNotification {
   read: boolean;
 }
 
+export type ManagementTab =
+  | 'finanzen'
+  | 'werkzeuge'
+  | 'einkauf'
+  | 'notfall'
+  | 'bericht'
+  | 'einstellungen';
+
 interface HomesteadContextValue {
   // Auth & Identity
   firebaseUser: User | null;
@@ -153,6 +164,9 @@ interface HomesteadContextValue {
   // Navigation & Theme
   activeModule: MainModuleId;
   setActiveModule: (mod: MainModuleId) => void;
+  managementTab: ManagementTab;
+  setManagementTab: (tab: ManagementTab) => void;
+  openManagementTab: (tab: ManagementTab) => void;
   resolvedTheme: 'light' | 'dark';
   setThemePreference: (pref: ThemePreference) => Promise<void>;
 
@@ -173,6 +187,7 @@ interface HomesteadContextValue {
   sharedMealPlan: Record<string, MealPlanDayEntry>;
   updateMealPlan: (plan: Record<string, MealPlanDayEntry>) => Promise<void>;
   requestPushPermission: () => Promise<{ granted: boolean; reason?: string }>;
+  sendTestNotification: () => Promise<{ ok: boolean; reason?: string }>;
 
   // Ping & Notifications
   pings: PingRecord[];
@@ -256,6 +271,76 @@ function makeDocId(prefix: string, seqIndex?: number): string {
   return `${prefix}_${Date.now()}${seq}_${rand}`;
 }
 
+const PROFILE_CACHE_PREFIX = 'hof_garten_profile_cache_v1_';
+
+function loadCachedUserProfile(uid: string): UserPrivateProfile | null {
+  try {
+    const raw = localStorage.getItem(`${PROFILE_CACHE_PREFIX}${uid}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as UserPrivateProfile;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedUserProfile(uid: string, profile: UserPrivateProfile): void {
+  try {
+    localStorage.setItem(`${PROFILE_CACHE_PREFIX}${uid}`, JSON.stringify(profile));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+function clearCachedUserProfile(uid?: string): void {
+  try {
+    if (uid) {
+      localStorage.removeItem(`${PROFILE_CACHE_PREFIX}${uid}`);
+      return;
+    }
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PROFILE_CACHE_PREFIX)) keysToRemove.push(k);
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+async function showSystemNotification(title: string, options: NotificationOptions): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+    return false;
+  }
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg =
+        (await navigator.serviceWorker.getRegistration('/')) ||
+        (await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1500)),
+        ]));
+      if (reg && 'showNotification' in reg) {
+        await reg.showNotification(title, {
+          icon: '/pwa-192x192.png',
+          badge: '/pwa-192x192.png',
+          data: { url: '/' },
+          ...options,
+        });
+        return true;
+      }
+    }
+  } catch {
+    // Fall back to window Notification below
+  }
+  try {
+    new Notification(title, options);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isOnline = useOnlineStatus();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -267,6 +352,11 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [dbConnected, setDbConnected] = useState(true);
 
   const [activeModule, setActiveModule] = useState<MainModuleId>('dashboard');
+  const [managementTab, setManagementTab] = useState<ManagementTab>('finanzen');
+  const openManagementTab = useCallback((tab: ManagementTab) => {
+    setManagementTab(tab);
+    setActiveModule('management');
+  }, []);
   const [systemPrefDark, setSystemPrefDark] = useState(
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
   );
@@ -394,9 +484,16 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setFirebaseUser(user);
       setAuthReady(true);
       if (!user) {
+        clearCachedUserProfile();
         setUserProfile(null);
         setProfileLoading(false);
         setMembers([]);
+      } else {
+        const cached = loadCachedUserProfile(user.uid);
+        if (cached) {
+          setUserProfile(cached);
+          setProfileLoading(false);
+        }
       }
     });
     return () => unsub();
@@ -413,16 +510,24 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let unsubProfile: (() => void) | undefined;
     let unsubMembers: (() => void) | undefined;
 
-    setProfileLoading(true);
+    const cachedProfile = loadCachedUserProfile(firebaseUser.uid);
+    if (cachedProfile) {
+      setUserProfile(cachedProfile);
+      setProfileLoading(false);
+    } else {
+      setProfileLoading(true);
+    }
 
     const startListeners = async () => {
-      try {
-        const tokenRes = await firebaseUser.getIdTokenResult();
-        if (!tokenRes.claims.email_verified) {
-          await firebaseUser.getIdToken(true);
+      if (navigator.onLine) {
+        try {
+          const tokenRes = await firebaseUser.getIdTokenResult();
+          if (!tokenRes.claims.email_verified) {
+            await firebaseUser.getIdToken(true);
+          }
+        } catch {
+          // Proceed with current token if offline or transient network hiccup
         }
-      } catch {
-        // Proceed with current token if offline
       }
       if (cancelled) return;
 
@@ -431,15 +536,23 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         userDocRef,
         (snap) => {
           if (snap.exists()) {
-            setUserProfile(snap.data() as UserPrivateProfile);
-          } else {
+            const profile = snap.data() as UserPrivateProfile;
+            setUserProfile(profile);
+            saveCachedUserProfile(firebaseUser.uid, profile);
+          } else if (!snap.metadata.fromCache) {
             setUserProfile(null);
+            clearCachedUserProfile(firebaseUser.uid);
           }
           setProfileLoading(false);
         },
         (err) => {
           setProfileLoading(false);
-          handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+          const code = (err as { code?: string })?.code || '';
+          if (code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+          } else {
+            console.warn('Transient profile listener error (using cached session if available):', err);
+          }
         }
       );
 
@@ -460,7 +573,12 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setMembers(list);
         },
         (err) => {
-          handleFirestoreError(err, OperationType.LIST, 'homesteadMembers');
+          const code = (err as { code?: string })?.code || '';
+          if (code === 'permission-denied') {
+            handleFirestoreError(err, OperationType.LIST, 'homesteadMembers');
+          } else {
+            console.warn('Transient members listener error:', err);
+          }
         }
       );
     };
@@ -678,18 +796,14 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   ...prev.slice(0, 29),
                 ]);
                 if (
-                  typeof Notification !== 'undefined' &&
-                  Notification.permission === 'granted' &&
+                  userProfile.notificationSettings?.instantPush !== false &&
                   userProfile.notificationSettings?.categories?.general !== false
                 ) {
-                  try {
-                    new Notification('Hof & Garten', {
-                      body: p.message,
-                      icon: '/pwa-192x192.png',
-                    });
-                  } catch {
-                    // Fallback when browser requires SW notification
-                  }
+                  void showSystemNotification(`Ping von ${p.fromName} · Hof & Garten`, {
+                    body: p.message,
+                    icon: '/pwa-192x192.png',
+                    tag: `ping_${p.id}`,
+                  });
                 }
               }
             }
@@ -835,19 +949,10 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const existingIds = new Set(prev.map((n) => n.id));
       const additions = candidates.filter((c) => !existingIds.has(c.id));
       if (additions.length === 0) return prev;
-      if (
-        typeof window !== 'undefined' &&
-        'Notification' in window &&
-        Notification.permission === 'granted' &&
-        userProfile.notificationSettings?.instantPush
-      ) {
+      if (userProfile.notificationSettings?.instantPush) {
         const urgent = additions.find((a) => a.priority === 'emergency');
         if (urgent) {
-          try {
-            new Notification(urgent.title, { body: urgent.body, tag: urgent.id });
-          } catch {
-            // Ignore browser notification constraints inside iframes
-          }
+          void showSystemNotification(urgent.title, { body: urgent.body, tag: urgent.id });
         }
       }
       return [...additions, ...prev].slice(0, 35);
@@ -966,6 +1071,15 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Auth Actions
   const loginWithEmail = async (email: string, password: string) => {
+    try {
+      await setPersistence(auth, indexedDBLocalPersistence);
+    } catch {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch {
+        // Proceed with active persistence
+      }
+    }
     await signInWithEmailAndPassword(auth, email.trim(), password);
   };
 
@@ -1053,6 +1167,7 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const logoutUser = async () => {
+    clearCachedUserProfile(firebaseUser?.uid);
     await signOut(auth);
   };
 
@@ -1062,6 +1177,7 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       await deleteDoc(doc(db, 'users', uid));
       await deleteDoc(doc(db, 'homesteadMembers', uid));
+      clearCachedUserProfile(uid);
       await deleteUser(firebaseUser);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
@@ -1209,19 +1325,58 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const requestPushPermission = async (): Promise<{ granted: boolean; reason?: string }> => {
+    const isIOSDevice =
+      typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalonePWA =
+      typeof window !== 'undefined' &&
+      (window.matchMedia?.('(display-mode: standalone)').matches ||
+        (window.navigator as unknown as { standalone?: boolean }).standalone === true);
+
     if (typeof Notification === 'undefined') {
-      return { granted: false, reason: 'Dieser Browser unterstützt keine Push-Benachrichtigungen (auf iPhone zuerst "Zum Home-Bildschirm" hinzufügen).' };
+      return {
+        granted: false,
+        reason: isIOSDevice && !isStandalonePWA
+          ? 'Auf dem iPhone zuerst in Safari „Teilen → Zum Home-Bildschirm“ wählen und die App von dort öffnen.'
+          : 'Dieser Browser unterstützt keine Push-Benachrichtigungen.',
+      };
     }
-    const perm = await Notification.requestPermission();
+
+    let perm: NotificationPermission = Notification.permission;
     if (perm !== 'granted') {
-      return { granted: false, reason: 'Berechtigung wurde vom Browser abgelehnt.' };
+      try {
+        perm = await Notification.requestPermission();
+      } catch (err) {
+        return {
+          granted: false,
+          reason:
+            err instanceof Error
+              ? err.message
+              : 'Berechtigung konnte nicht angefragt werden.',
+        };
+      }
     }
+
+    if (perm === 'denied') {
+      return {
+        granted: false,
+        reason: isIOSDevice
+          ? 'Mitteilungen wurden blockiert. Bitte in iPhone-Einstellungen → Mitteilungen → Hof & Garten erlauben.'
+          : 'Berechtigung wurde in den Browser-Einstellungen blockiert.',
+      };
+    }
+
+    if (perm !== 'granted') {
+      return { granted: false, reason: 'Berechtigung wurde noch nicht erteilt.' };
+    }
+
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-    if (vapidKey && firebaseUser) {
+    if (vapidKey && firebaseUser && 'serviceWorker' in navigator) {
       const messaging = await getMessagingInstance();
       if (messaging) {
         try {
-          const swReg = await navigator.serviceWorker?.register('/firebase-messaging-sw.js');
+          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            scope: '/firebase-cloud-messaging-push-scope',
+          });
           const token = await getToken(messaging, {
             vapidKey,
             serviceWorkerRegistration: swReg,
@@ -1232,19 +1387,42 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               updatedAt: serverTimestamp(),
             });
           }
-          return { granted: true };
+          return { granted: true, reason: 'Push & FCM-Token für Pings aktiviert.' };
         } catch (err) {
           return {
             granted: true,
-            reason: `Browser-Benachrichtigung aktiv; FCM-Token-Registrierung Hinweis: ${err instanceof Error ? err.message : 'VAPID prüfen'}`,
+            reason: `Push-Berechtigung aktiv; FCM-Hinweis: ${err instanceof Error ? err.message : 'VAPID prüfen'}`,
           };
         }
       }
     }
+
     return {
       granted: true,
-      reason: vapidKey ? undefined : 'Lokale Browser-Benachrichtigungen aktiv (für Hintergrund-FCM bitte VITE_FIREBASE_VAPID_KEY hinterlegen).',
+      reason: 'Push-Berechtigung aktiv! Live-Pings werden ab sofort als Mitteilung angezeigt.',
     };
+  };
+
+  const sendTestNotification = async (): Promise<{ ok: boolean; reason?: string }> => {
+    if (typeof Notification === 'undefined') {
+      return {
+        ok: false,
+        reason: 'Bitte zuerst auf dem iPhone über „Zum Home-Bildschirm“ öffnen.',
+      };
+    }
+    if (Notification.permission !== 'granted') {
+      const res = await requestPushPermission();
+      if (!res.granted) {
+        return { ok: false, reason: res.reason };
+      }
+    }
+    const shown = await showSystemNotification('Hof & Garten · Ping-Test', {
+      body: 'Super! Push-Mitteilungen für Pings funktionieren auf diesem Gerät.',
+      tag: `test_ping_${Date.now()}`,
+    });
+    return shown
+      ? { ok: true, reason: 'Test-Benachrichtigung gesendet.' }
+      : { ok: false, reason: 'System-Mitteilung konnte nicht angezeigt werden (bitte Fokus/Nicht stören prüfen).' };
   };
 
   // 1-Click Ping
@@ -1602,6 +1780,9 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         dbConnected,
         activeModule,
         setActiveModule,
+        managementTab,
+        setManagementTab,
+        openManagementTab,
         resolvedTheme,
         setThemePreference,
         loginWithEmail,
@@ -1618,6 +1799,7 @@ export const HomesteadProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         sharedMealPlan,
         updateMealPlan,
         requestPushPermission,
+        sendTestNotification,
         pings,
         pingCooldownSec,
         sendPing,

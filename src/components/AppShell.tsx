@@ -52,6 +52,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const {
     activeModule,
     setActiveModule,
+    openManagementTab,
     userProfile,
     activeIdentity,
     otherIdentity,
@@ -230,6 +231,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
             )}
 
+            {(showNotifPanel || showProfileMenu) && (
+              <div
+                aria-hidden="true"
+                onClick={() => {
+                  setShowNotifPanel(false);
+                  setShowProfileMenu(false);
+                }}
+                className="fixed inset-0 z-40"
+              />
+            )}
+
             {/* Notifications */}
             <div className="relative">
               <button
@@ -250,7 +262,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
 
               {showNotifPanel && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 max-h-[75vh] overflow-y-auto bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl p-4 space-y-3 z-50">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] max-h-[75vh] overflow-y-auto bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl p-4 space-y-3 z-50">
                   <div className="flex items-center justify-between">
                     <span className="font-display font-semibold text-sm">Meldungen & Pings</span>
                     <button
@@ -301,6 +313,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                       ))}
                     </div>
                   )}
+
+                  <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openManagementTab('einstellungen');
+                        setShowNotifPanel(false);
+                      }}
+                      className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-semibold flex items-center justify-center gap-2 transition"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Push & Einstellungen öffnen
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -348,28 +374,31 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveModule('management');
+                      openManagementTab('einstellungen');
                       setShowProfileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left"
+                    className="w-full min-h-[44px] flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left"
                   >
                     <Settings className="w-4 h-4" />
-                    Einstellungen & Benachrichtigungen
+                    Einstellungen & Push
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark');
                     }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left sm:hidden"
+                    className="w-full min-h-[44px] flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left sm:hidden"
                   >
                     {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                     {resolvedTheme === 'dark' ? 'Heller Modus' : 'Dunkler Modus'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => logoutUser()}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#CF6432] hover:bg-[#CF6432]/10 text-left"
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      void logoutUser();
+                    }}
+                    className="w-full min-h-[44px] flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#CF6432] hover:bg-[#CF6432]/10 text-left"
                   >
                     <LogOut className="w-4 h-4" />
                     Abmelden
@@ -530,6 +559,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   );
                 }
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  openManagementTab('einstellungen');
+                  setShowMobileDrawer(false);
+                }}
+                className="col-span-2 flex items-center justify-center gap-2.5 p-3.5 rounded-xl bg-[#597CD4]/15 border border-[#597CD4]/40 text-sm font-semibold text-neutral-900 dark:text-neutral-100 min-h-[48px]"
+              >
+                <Settings className="w-4 h-4 text-[#597CD4] shrink-0" />
+                <span>Einstellungen & Push-Mitteilungen</span>
+              </button>
             </div>
           </div>
         </div>

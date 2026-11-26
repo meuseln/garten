@@ -1,8 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import {
   browserLocalPersistence,
+  browserPopupRedirectResolver,
   getAuth,
-  setPersistence,
+  indexedDBLocalPersistence,
+  initializeAuth,
 } from 'firebase/auth';
 import {
   doc,
@@ -52,12 +54,18 @@ export const db = initializeFirestore(
   firebaseConfig.firestoreDatabaseId
 );
 
-export const auth = getAuth(app);
+function createPersistentAuth() {
+  try {
+    return initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
 
-// Keep session persisted locally across reloads & PWA launches
-setPersistence(auth, browserLocalPersistence).catch((err) => {
-  console.warn('Auth persistence setup warning:', err);
-});
+export const auth = createPersistentAuth();
 
 export async function getMessagingInstance() {
   try {

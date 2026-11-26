@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
 import { FIREBASE_PROJECT_ID } from '../lib/firebase';
+import { usePWAInstall } from '../lib/offlineSync';
 import type { UserIdentity } from '../types/homestead';
 
 export const AuthScreen: React.FC = () => {
@@ -27,6 +28,7 @@ export const AuthScreen: React.FC = () => {
     logoutUser,
     members,
   } = useHomestead();
+  const { isIOS, isInstalled } = usePWAInstall();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -406,8 +408,14 @@ export const AuthScreen: React.FC = () => {
                     <KeyRound className="w-3.5 h-3.5" />
                     Passwort vergessen?
                   </button>
-                  <span className="text-xs text-neutral-500">Privater Hofzugang</span>
+                  <span className="text-xs text-neutral-500">Angemeldet bleiben aktiv</span>
                 </div>
+
+                {isIOS && !isInstalled && (
+                  <div className="p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412] border border-neutral-200 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                    <strong>iPhone-Tipp:</strong> Wenn du die App über <strong>Teilen → Zum Home-Bildschirm</strong> speicherst, melde dich einmal direkt in der Home-Screen-App an — danach bleibst du dauerhaft eingeloggt und kannst Push-Pings aktivieren.
+                  </div>
+                )}
               </form>
             ) : (
               <form onSubmit={handleReset} className="space-y-4">

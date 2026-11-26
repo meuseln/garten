@@ -78,13 +78,13 @@ export const SegmentedTabs: React.FC<{
   activeTab: string;
   onChange: (id: string) => void;
 }> = ({ tabs, activeTab, onChange }) => (
-  <div className="flex items-center gap-1 p-1 bg-neutral-200/70 dark:bg-neutral-800/70 rounded-xl w-full sm:w-fit overflow-x-auto">
+  <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-200/70 dark:bg-neutral-800/70 rounded-xl w-full sm:w-fit">
     {tabs.map((tab) => (
       <button
         key={tab.id}
         type="button"
         onClick={() => onChange(tab.id)}
-        className={`px-3.5 py-2 text-xs font-medium rounded-lg transition whitespace-nowrap shrink-0 min-h-[40px] ${
+        className={`px-3 sm:px-3.5 py-2 text-xs font-medium rounded-lg transition whitespace-nowrap min-h-[44px] flex-1 sm:flex-initial text-center ${
           activeTab === tab.id
             ? 'bg-white dark:bg-[#161D1A] text-neutral-900 dark:text-neutral-100 shadow-xs'
             : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'

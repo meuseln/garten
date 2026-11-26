@@ -12,7 +12,13 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+        includeAssets: [
+          'icon.svg',
+          'apple-touch-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'sw-notifications.js',
+        ],
         manifest: {
           id: '/',
           name: 'Hof & Garten',
@@ -46,6 +52,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          importScripts: ['/sw-notifications.js'],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           runtimeCaching: [
