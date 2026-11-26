@@ -6,13 +6,16 @@ import {
   Plus,
   Printer,
   QrCode,
+  RefreshCw,
   Save,
+  Search,
   ShieldAlert,
   ShoppingCart,
   Sparkles,
   UtensilsCrossed,
 } from 'lucide-react';
 import { useHomestead } from '../context/HomesteadContext';
+import { buildStarterRecipes } from '../data/botanicalCatalog';
 import {
   EmptyState,
   Modal,
@@ -73,6 +76,7 @@ export const PantryView: React.FC = () => {
     createRecord,
     updateRecord,
     archiveRecord,
+    seedReferenceDatabases,
     pushToast,
   } = useHomestead();
 
@@ -87,8 +91,12 @@ export const PantryView: React.FC = () => {
   }, [sharedMealPlan]);
 
   // Recipe scaling & suggestions
-  const [availableInputKg, setAvailableInputKg] = useState<number>(4.5);
-  const [availableCropInput, setAvailableCropInput] = useState<string>('Johannisbeeren');
+  const [availableInputKgText, setAvailableInputKgText] = useState<string>('');
+  const [availableCropInput, setAvailableCropInput] = useState<string>('');
+  const [recipeCategoryFilter, setRecipeCategoryFilter] = useState<
+    'Alle' | 'Deutsche Küche' | 'Mediterrane Küche' | 'Vorrat & Konservierung'
+  >('Alle');
+  const [seedingRecipes, setSeedingRecipes] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<HomesteadRecord<RecipePayload> | null>(null);
   const [scaleRawKg, setScaleRawKg] = useState<number>(1.0);
 
@@ -188,22 +196,47 @@ export const PantryView: React.FC = () => {
     return Array.from(map.entries());
   }, [activeHarvests, activeAreas]);
 
+  const missingRecipesCount = useMemo(() => {
+    const existing = new Set(recipes.map((r) => r.title.trim().toLowerCase()));
+    return buildStarterRecipes().filter((r) => !existing.has(r.title.trim().toLowerCase())).length;
+  }, [recipes]);
+
+  const parsedOverrideKg = useMemo(() => {
+    const val = Number(availableInputKgText.replace(',', '.'));
+    return availableInputKgText.trim() !== '' && Number.isFinite(val) && val > 0 ? val : null;
+  }, [availableInputKgText]);
+
   const suggestedRecipes = useMemo(() => {
     const q = availableCropInput.trim().toLowerCase();
     return activeRecipes.filter((r) => {
+      if (recipeCategoryFilter === 'Deutsche Küche' && r.payload.category !== 'Deutsche Küche') {
+        return false;
+      }
+      if (recipeCategoryFilter === 'Mediterrane Küche' && r.payload.category !== 'Mediterrane Küche') {
+        return false;
+      }
+      if (
+        recipeCategoryFilter === 'Vorrat & Konservierung' &&
+        (r.payload.category === 'Deutsche Küche' || r.payload.category === 'Mediterrane Küche')
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         r.payload.linkedPlant.toLowerCase().includes(q) ||
+        r.payload.category.toLowerCase().includes(q) ||
         r.title.toLowerCase().includes(q) ||
+        r.payload.method.toLowerCase().includes(q) ||
+        r.payload.instructions.toLowerCase().includes(q) ||
         r.payload.ingredients.some((ing) => ing.name.toLowerCase().includes(q))
       );
     });
-  }, [activeRecipes, availableCropInput]);
+  }, [activeRecipes, availableCropInput, recipeCategoryFilter]);
 
   const inventoryPagination = usePagination(activeInventory, 6);
   const batchPagination = usePagination(activeBatches, 4);
   const harvestPagination = usePagination(activeHarvests, 5);
-  const recipePagination = usePagination(suggestedRecipes, 4);
+  const recipePagination = usePagination(suggestedRecipes, 6);
 
   const saveHarvest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -578,82 +611,213 @@ export const PantryView: React.FC = () => {
       {/* TAB 4: Rezepte & Automatische Vorschläge */}
       {tab === 'recipes' && (
         <div className="space-y-5">
-          <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-3">
-            <h3 className="font-display text-base font-semibold flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#CF6432]" />
-              Automatischer Rezeptvorschlag & Zutatenrechner
-            </h3>
+          {missingRecipesCount > 0 && (
+            <div className="bg-[#FFC814]/15 border border-[#FFC814]/50 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs sm:text-sm">
+                <strong className="text-[#7A4400] dark:text-[#FFD65A]">
+                  Neue Rezepte verfügbar ({missingRecipesCount}):
+                </strong>{' '}
+                <span className="text-neutral-700 dark:text-neutral-300">
+                  Ergänze deine Hof-Datenbank um alle Rezepte der deutschen &amp; mediterranen Küche sowie Vorrats-Klassiker.
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={seedingRecipes}
+                onClick={async () => {
+                  setSeedingRecipes(true);
+                  try {
+                    const res = await seedReferenceDatabases();
+                    if (res.added > 0) {
+                      pushToast('success', `${res.added} neue Einträge in die Hof-Datenbank geladen.`);
+                    }
+                  } finally {
+                    setSeedingRecipes(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[#233A29] text-white text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${seedingRecipes ? 'animate-spin' : ''}`} />
+                {seedingRecipes ? 'Lädt…' : `Rezepte-Datenbank ergänzen (+${missingRecipesCount})`}
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="font-display text-base font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#CF6432]" />
+                Rezeptdatenbank (Deutsche &amp; Mediterrane Küche + Vorrat) &amp; Zutatenrechner
+              </h3>
+              <span className="text-xs text-neutral-500">
+                {suggestedRecipes.length} Rezept(e) angezeigt
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {(['Alle', 'Deutsche Küche', 'Mediterrane Küche', 'Vorrat & Konservierung'] as const).map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setRecipeCategoryFilter(cat);
+                    recipePagination.setPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border ${
+                    recipeCategoryFilter === cat
+                      ? 'bg-[#233A29] text-white border-[#233A29]'
+                      : 'bg-neutral-50 dark:bg-[#0F1412] text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-800 hover:border-neutral-400'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1">Verfügbares Erntegut</label>
-                <input
-                  type="text"
-                  value={availableCropInput}
-                  onChange={(e) => setAvailableCropInput(e.target.value)}
-                  placeholder="z.B. Johannisbeeren, Äpfel, Weißkohl"
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
-                />
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium mb-1">Suche nach Zutat, Pflanze oder Gericht</label>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={availableCropInput}
+                    onChange={(e) => {
+                      setAvailableCropInput(e.target.value);
+                      recipePagination.setPage(1);
+                    }}
+                    placeholder="z.B. Kartoffeln, Tomaten, Kaninchen, Hähnchen, Pilze, Zwetschgen…"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm"
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">Verfügbare Menge (kg)</label>
+                <label className="block text-xs font-medium mb-1">Eigene Rohwaren-Menge (kg, optional)</label>
                 <input
                   type="number"
                   step="0.1"
                   min="0.1"
-                  value={availableInputKg}
-                  onChange={(e) => setAvailableInputKg(Number(e.target.value) || 1)}
+                  value={availableInputKgText}
+                  onChange={(e) => setAvailableInputKgText(e.target.value)}
+                  placeholder="Standard: Originalrezept"
                   className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm font-mono-num"
                 />
               </div>
-              <div className="flex items-end text-xs text-neutral-500 pb-2">
-                {suggestedRecipes.length} passende Rezept(e) gefunden — Mengen werden automatisch skaliert.
-              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="text-neutral-500 mr-1">Schnellwahl Zutat:</span>
+              {[
+                'Kartoffeln',
+                'Tomaten',
+                'Zucchini',
+                'Weißkohl',
+                'Grünkohl',
+                'Pilze',
+                'Kaninchen',
+                'Hähnchen',
+                'Hofeier',
+                'Kräuter',
+                'Zwetschgen',
+                'Johannisbeeren',
+              ].map((tag) => {
+                const active = availableCropInput.trim().toLowerCase() === tag.toLowerCase();
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setAvailableCropInput(active ? '' : tag);
+                      recipePagination.setPage(1);
+                    }}
+                    className={`px-2 py-0.5 rounded-lg border transition-colors ${
+                      active
+                        ? 'bg-[#CF6432] text-white border-[#CF6432]'
+                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {recipePagination.pageItems.map((r) => {
-              const factor = r.payload.baseRawAmountKg > 0 ? availableInputKg / r.payload.baseRawAmountKg : 1;
-              return (
-                <div
-                  key={r.id}
-                  className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 sm:p-5 space-y-3"
-                >
-                  <div className="text-xs text-neutral-500">
-                    {r.payload.category} · Quelle: {r.payload.verifiedSource}
-                  </div>
-                  <h4 className="font-display text-lg font-bold">{r.title}</h4>
-                  <div className="text-xs font-medium text-[#3B6912] dark:text-[#BBE774]">
-                    Ertrag bei {availableInputKg} kg: ca. {(r.payload.baseYieldAmount * factor).toFixed(1)}{' '}
-                    {r.payload.baseYieldUnit}
-                  </div>
-                  <ul className="text-xs space-y-1">
-                    {r.payload.ingredients.map((ing) => (
-                      <li key={ing.name} className="flex justify-between border-b border-neutral-100 dark:border-neutral-800 py-1">
-                        <span>{ing.name}</span>
-                        <span className="font-mono-num font-semibold">
-                          {(ing.amount * factor).toFixed(0)} {ing.unit}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="text-xs text-neutral-600 dark:text-neutral-400">
-                    <strong>Sicherheit:</strong> {r.payload.acidityAndSafetyNote}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedRecipe(r);
-                      setScaleRawKg(availableInputKg);
-                    }}
-                    className="min-h-[36px] text-xs font-semibold text-[#597CD4] hover:underline"
+          {suggestedRecipes.length === 0 ? (
+            <EmptyState
+              title="Keine passenden Rezepte gefunden"
+              description="Leere den Suchfilter oder wechsle die Küchen-Kategorie, um alle Rezepte anzuzeigen."
+              actionLabel="Filter zurücksetzen"
+              onAction={() => {
+                setAvailableCropInput('');
+                setRecipeCategoryFilter('Alle');
+                recipePagination.setPage(1);
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recipePagination.pageItems.map((r) => {
+                const targetKg = parsedOverrideKg ?? r.payload.baseRawAmountKg;
+                const factor = r.payload.baseRawAmountKg > 0 ? targetKg / r.payload.baseRawAmountKg : 1;
+                return (
+                  <div
+                    key={r.id}
+                    className="bg-white dark:bg-[#161D1A] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 sm:p-5 space-y-3 flex flex-col justify-between"
                   >
-                    Zubereitung & Skalierung öffnen →
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="px-2 py-0.5 rounded-lg bg-[#233A29]/10 dark:bg-[#BBE774]/15 text-[#233A29] dark:text-[#BBE774] font-semibold">
+                          {r.payload.category}
+                        </span>
+                        <span className="text-neutral-500 truncate">{r.payload.linkedPlant}</span>
+                      </div>
+                      <h4 className="font-display text-lg font-bold leading-snug">{r.title}</h4>
+                      <div className="text-xs font-medium text-[#3B6912] dark:text-[#BBE774]">
+                        Ertrag bei {targetKg.toFixed(targetKg < 1 ? 2 : 1)} kg Hauptzutat: ca.{' '}
+                        {Number((r.payload.baseYieldAmount * factor).toFixed(1))} {r.payload.baseYieldUnit}
+                      </div>
+                      <ul className="text-xs space-y-1">
+                        {r.payload.ingredients.map((ing) => {
+                          const scaledAmount = ing.amount * factor;
+                          const displayAmount =
+                            scaledAmount < 10 ? Number(scaledAmount.toFixed(1)) : Math.round(scaledAmount);
+                          return (
+                            <li
+                              key={ing.name}
+                              className="flex justify-between gap-2 border-b border-neutral-100 dark:border-neutral-800 py-1"
+                            >
+                              <span className="text-neutral-700 dark:text-neutral-300">{ing.name}</span>
+                              <span className="font-mono-num font-semibold shrink-0">
+                                {displayAmount} {ing.unit}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                        <strong>Hinweis &amp; Sicherheit:</strong> {r.payload.acidityAndSafetyNote}
+                      </div>
+                    </div>
+                    <div className="pt-2 flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800">
+                      <span className="text-[11px] text-neutral-400 truncate max-w-[60%]">
+                        {r.payload.verifiedSource}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRecipe(r);
+                          setScaleRawKg(targetKg);
+                        }}
+                        className="min-h-[36px] text-xs font-semibold text-[#597CD4] hover:underline shrink-0"
+                      >
+                        Zubereitung &amp; Details →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <PaginationControls
             page={recipePagination.page}
             totalPages={recipePagination.totalPages}
@@ -879,44 +1043,95 @@ export const PantryView: React.FC = () => {
         onClose={() => setSelectedRecipe(null)}
         title={selectedRecipe?.title || 'Rezept'}
       >
-        {selectedRecipe && (
-          <div className="space-y-4 text-sm">
-            <div className="flex items-center gap-3">
-              <label className="text-xs font-medium">Rohware skalieren (kg):</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={scaleRawKg}
-                onChange={(e) => setScaleRawKg(Number(e.target.value) || 1)}
-                className="w-24 px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm font-mono-num"
-              />
+        {selectedRecipe && (() => {
+          const factor =
+            selectedRecipe.payload.baseRawAmountKg > 0 ? scaleRawKg / selectedRecipe.payload.baseRawAmountKg : 1;
+          return (
+            <div className="space-y-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+                <span>
+                  <strong className="text-[#233A29] dark:text-[#BBE774]">{selectedRecipe.payload.category}</strong> ·{' '}
+                  Bezug: {selectedRecipe.payload.linkedPlant}
+                </span>
+                <span className="font-medium text-[#3B6912] dark:text-[#BBE774]">
+                  Ertrag: ca. {Number((selectedRecipe.payload.baseYieldAmount * factor).toFixed(1))}{' '}
+                  {selectedRecipe.payload.baseYieldUnit}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-[#F7F7F5] dark:bg-[#0F1412] border border-neutral-200 dark:border-neutral-800">
+                <label className="text-xs font-medium">Hauptzutat / Rohware skalieren (kg):</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.05"
+                  value={scaleRawKg}
+                  onChange={(e) => setScaleRawKg(Number(e.target.value) || selectedRecipe.payload.baseRawAmountKg)}
+                  className="w-24 px-2.5 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-[#161D1A] text-sm font-mono-num"
+                />
+                <button
+                  type="button"
+                  onClick={() => setScaleRawKg(selectedRecipe.payload.baseRawAmountKg)}
+                  className="text-xs text-[#597CD4] hover:underline"
+                >
+                  Original ({selectedRecipe.payload.baseRawAmountKg} kg)
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                  <div className="font-semibold text-neutral-500 mb-0.5">Zubereitungsart / Methode</div>
+                  <div>{selectedRecipe.payload.method}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                  <div className="font-semibold text-neutral-500 mb-0.5">Benötigte Ausstattung</div>
+                  <div>{selectedRecipe.payload.equipment}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="font-semibold text-xs text-neutral-500 mb-1">Zutaten</div>
+                <ul className="space-y-1 text-xs">
+                  {selectedRecipe.payload.ingredients.map((ing) => {
+                    const scaledAmount = ing.amount * factor;
+                    const displayAmount =
+                      scaledAmount < 10 ? Number(scaledAmount.toFixed(1)) : Math.round(scaledAmount);
+                    return (
+                      <li
+                        key={ing.name}
+                        className="flex justify-between py-1 border-b border-neutral-100 dark:border-neutral-800"
+                      >
+                        <span>{ing.name}</span>
+                        <span className="font-mono-num font-semibold">
+                          {displayAmount} {ing.unit}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              <div>
+                <div className="font-semibold text-xs text-neutral-500 mb-1">Schritt-für-Schritt Zubereitung</div>
+                <p className="text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
+                  {selectedRecipe.payload.instructions}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#233A29]/5 dark:bg-[#BBE774]/10 border border-[#233A29]/15 dark:border-[#BBE774]/20 text-xs">
+                <strong>Aufbewahrung &amp; Reste:</strong> {selectedRecipe.payload.storageNotes}
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#CF6432]/10 border border-[#CF6432]/30 text-xs">
+                <strong>Sicherheit &amp; Hygiene:</strong> {selectedRecipe.payload.acidityAndSafetyNote}
+              </div>
+
+              <div className="text-[11px] text-neutral-400">
+                Quelle: {selectedRecipe.payload.verifiedSource}
+              </div>
             </div>
-            <div>
-              <div className="font-semibold text-xs text-neutral-500 mb-1">Zutaten</div>
-              <ul className="space-y-1 text-xs">
-                {selectedRecipe.payload.ingredients.map((ing) => {
-                  const factor = selectedRecipe.payload.baseRawAmountKg > 0 ? scaleRawKg / selectedRecipe.payload.baseRawAmountKg : 1;
-                  return (
-                    <li key={ing.name} className="flex justify-between py-1 border-b border-neutral-100 dark:border-neutral-800">
-                      <span>{ing.name}</span>
-                      <span className="font-mono-num font-semibold">
-                        {(ing.amount * factor).toFixed(0)} {ing.unit}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-            <div>
-              <div className="font-semibold text-xs text-neutral-500 mb-1">Zubereitung</div>
-              <p className="text-xs leading-relaxed">{selectedRecipe.payload.instructions}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-[#CF6432]/10 border border-[#CF6432]/30 text-xs">
-              <strong>Sicherheit & Säure:</strong> {selectedRecipe.payload.acidityAndSafetyNote}
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* Harvest Modal */}

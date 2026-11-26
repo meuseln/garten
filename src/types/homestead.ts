@@ -282,7 +282,17 @@ export interface RecipeIngredient {
 }
 
 export interface RecipePayload {
-  category: 'Einkochen' | 'Einfrieren' | 'Fermentieren' | 'Trocknen' | 'Lagerung' | 'Entsaften' | 'Marmeladen & Gelees' | 'Sonstiges';
+  category:
+    | 'Einkochen'
+    | 'Einfrieren'
+    | 'Fermentieren'
+    | 'Trocknen'
+    | 'Lagerung'
+    | 'Entsaften'
+    | 'Marmeladen & Gelees'
+    | 'Deutsche Küche'
+    | 'Mediterrane Küche'
+    | 'Sonstiges';
   baseRawAmountKg: number;
   baseYieldAmount: number;
   baseYieldUnit: string;
